@@ -2,132 +2,345 @@
  */
 
 #include <xeroskernel.h>
-#include <i386.h>
-#include <xeroslib.h>
 #include <stdarg.h>
 
+/* Your code goes here */
 
-static pcb      *head = NULL;
-static pcb      *tail = NULL;
+extern int contextswitch(pcb* );
+extern int create (void (*func)(void), int stack, unsigned int parent);
+extern void end_of_intr(void);
+extern long freemem;
 
-void     dispatch( void ) {
-/********************************/
+static int balanceFactor(treeNode*);
+static void updateHeight(treeNode*);
+static treeNode* rotateLeft(treeNode*);
+static treeNode* rotateRight(treeNode*node);
+static treeNode* insert(treeNode*, unsigned int, unsigned int);
+static int lookup(treeNode*, unsigned int, unsigned int *);
+static treeNode* delete(treeNode*, unsigned int);
 
-    pcb         *p;
-    int         r;
-    funcptr     fp;
-    int         stack;
-    va_list     ap;
-    char        *str;
-    int         len;
+// Some process management variables
+pcb pcbTable[MAX_NUM_PROCESS];
+pcb *idle = NULL;
+pcbQueue readyQueue;
+treeNode *pidMap = NULL;
+unsigned int nextPid;
 
-    for( p = next(); p; ) {
-      //      kprintf("Process %x selected stck %x\n", p, p->esp);
+void idleproc(void) {
+  while (TRUE) {
+    asm("hlt;\n":::);
+  }
+}
 
-      r = contextswitch( p );
-      switch( r ) {
-      case( SYS_CREATE ):
-        ap = (va_list)p->args;
-        fp = (funcptr)(va_arg( ap, int ) );
-        stack = va_arg( ap, int );
-        p->ret = create( fp, stack );
+void pidMapInsert(unsigned int pid, unsigned int pcbIndex) {
+  pidMap = insert(pidMap, pid, pcbIndex);
+}
+
+void pidMapDelete(unsigned int pid) {
+  pidMap = delete(pidMap, pid);
+}
+
+int pidMapLookup(unsigned int pid, unsigned int *pcbIndex) {
+  return lookup(pidMap, pid, pcbIndex);
+}
+
+void initPcb(void) {
+  unsigned int i;
+
+  for (i = 0; i < MAX_NUM_PROCESS; i++) {
+    pcbTable[i].pid = 0;
+    pcbTable[i].state = STOPPED;
+    pcbTable[i].next = pcbTable[i].senders = pcbTable[i].receivers = NULL;
+  }
+  nextPid = 1;
+  readyQueue.front = readyQueue.back = NULL;
+  idle = NULL;
+  pidMap = NULL;
+}
+
+/* Returns the a PCB pointer  */
+pcb *next(void) {
+  pcb *next = readyQueue.front;
+  if (next != NULL) { 
+    if (readyQueue.back == next) {
+      readyQueue.back = NULL;
+      readyQueue.front = NULL;
+    } 
+    readyQueue.front = next->next;
+    next->next = NULL;
+    // kprintf("next =  pid %u, ", next->pid);
+  }
+  return next;
+}
+
+void ready(pcb* process) {
+  // kprintf("ready pid %u, ", process->pid);
+  if (readyQueue.front == NULL) {
+    readyQueue.front = process;
+    readyQueue.back = process;
+  } else {
+    readyQueue.back->next = process;
+    readyQueue.back = process;
+  }
+  process->state = READY;
+  process->next = NULL;
+}
+
+void cleanup(pcb* p) {
+  pcb *sender, *receiver;
+
+  // unblock all blocked trying to send to/ receive from this process
+  while (p->senders) {
+    sender = p->senders;
+    p->senders = sender->next;
+    sender->irc = SYS_SR_NO_PID;
+    ready(sender);
+  }
+  while (p->receivers) {
+    receiver = p->receivers;
+    p->receivers = receiver->next;
+    receiver->irc = SYS_SR_NO_PID;
+    ready(receiver);
+  }
+  kfree(p->stack);
+  p->stack = NULL;
+  p->state = STOPPED;
+  pidMapDelete(p->pid);
+}
+
+void dispatch(void) {
+  funcptr fp;
+  handler new_handler, *old_handler;
+  int request, pid, signal;
+  pcb *p;
+  va_list ap;
+  unsigned int dest_pid, *from_pid;
+
+  for (p = next(); p != NULL;) {
+    p->state = RUNNING;
+    request = contextswitch(p);
+    handle_request:
+    ap = (va_list) p->iargs;
+    switch (request) {
+      case (CREATE):
+        fp = (funcptr) va_arg(ap, int);
+        pid = create(fp, va_arg(ap, int), p->pid);
+        ready(p);
+        p->irc = pid; 
         break;
-      case( SYS_YIELD ):
-        ready( p );
-        p = next();
+      case YIELD: 
+        ready(p);
         break;
-      case( SYS_STOP ):
-        p->state = STATE_STOPPED;
-        p = next();
+      case STOP:
+        cleanup(p);
         break;
-      case( SYS_PUTS ):
-	  ap = (va_list)p->args;
-	  str = va_arg( ap, char * );
-	  kprintf( "%s", str );
-	  p->ret = 0;
-	  break;
-      case( SYS_GETPID ):
-	p->ret = p->pid;
-	break;
-      case( SYS_SLEEP ):
-	ap = (va_list)p->args;
-	len = va_arg( ap, int );
-	sleep( p, len );
-	p = next();
-	break;
-      case( SYS_TIMER ):
-	tick();
-	ready( p );
-	p = next();
-	end_of_intr();
-	break;
+      case GET_PID:
+        p->irc = p->pid;
+        ready(p);
+        break;
+      case GET_P_PID:
+        p->irc = p->parentPid;
+        ready(p);
+        break;
+      case PUTS:
+        kprintf((char*) va_arg(ap, int));
+        ready(p);
+        break;
+      case SEND:
+        dest_pid = (unsigned int) va_arg(ap, unsigned int);
+        send(p, dest_pid);
+        break;
+      case RECV:
+        from_pid = (unsigned int*) va_arg(ap, unsigned int);
+        receive(p, from_pid);
+        break;
+      case TIMER_INT:
+        ready(p);
+        tick();
+        end_of_intr();
+        break;
+      case SLEEP:
+        sleep(p, (unsigned int) va_arg(ap, int));
+        break;
+      case TIME_INT:
+        request = contextswitch(p);
+        goto  handle_request;
+        break;
+      case SIGHANDLER:
+        ready(p);
+        signal = va_arg(ap, int);
+        new_handler = (handler) va_arg(ap, int);
+        old_handler = (handler*) va_arg(ap, int);
+        sighandler(p, signal, new_handler, old_handler);
       default:
-        kprintf( "Bad Sys request %d, pid = %d\n", r, p->pid );
+        break;
+    }
+
+    p = next();
+    // Try to not run the idle process if there are others in queue
+    if (idle != NULL && p == idle) {
+      p = next();
+      if (p == NULL) {
+        p = idle;
+      } else {
+        ready(idle);
       }
     }
 
-    kprintf( "Out of processes: dying\n" );
-    
-    for( ;; );
+  }
 }
 
-extern void dispatchinit( void ) {
-/********************************/
+void sighandler(pcb* p, int signal, handler new_handler, handler* old_handler) {
+  if (signal < 0 || signal >= NUM_SIGNAL) {
+    p->irc = -1;
+    return;
+  }
 
-  //bzero( proctab, sizeof( pcb ) * MAX_PROC );
-  memset(proctab, 0, sizeof( pcb ) * MAX_PROC);
+  if (old_handler) {
+    *old_handler = p->sig_handler[signal];
+  }
+
+  if ((long) new_handler >= freemem) {
+    p->irc = -2;
+    return;
+  }
+
+  p->sig_handler[signal] = new_handler;
+  p->irc = 0;
 }
 
+/******************************************************************************
+  AVL tree implementations
+ *****************************************************************************/
+static int balanceFactor(treeNode *node) {
+  unsigned int lH, rH;
+  lH = node->left ? node->left->height : 0;
+  rH = node->right ? node->right->height : 0;
+  return lH - rH;
+}
 
+/* 
+ * Update height of AVL tree node, leaf has height of 1
+ * Assumes children heights are correct
+ */
+static void updateHeight(treeNode *node) {
+  node->height = max(node->left ? node->left->height : 0,
+      node->right ? node->right->height : 0) + 1;
+}
 
-extern void     ready( pcb *p ) {
-/*******************************/
+static treeNode* rotateLeft(treeNode* node) {
+  treeNode* ret = node->right;
+  node->right = ret->left;
+  ret->left = node;
+  updateHeight(node);
+  updateHeight(ret);
+  return ret;
+}
 
-    p->next = NULL;
-    p->state = STATE_READY;
+static treeNode* rotateRight(treeNode* node) {
+  treeNode* ret = node->left;
+  node->left = ret->right;
+  updateHeight(node);
+  updateHeight(ret);
+  return ret;
+}
 
-    if( tail ) {
-        tail->next = p;
+/*
+ * Inserts a node and balances the tree
+ */
+static treeNode* insert(treeNode* node, unsigned int pid, unsigned int pcbIndex) {
+  treeNode *newNode;
+  if (!node) {
+    newNode = (treeNode*) kmalloc(sizeof(treeNode));
+    if (!newNode) {
+      kprintf("PID map insert failed\n");
+      abort();
+    }
+    newNode->pid = pid;
+    newNode->pcbIndex = pcbIndex;
+    newNode->left = newNode->right = NULL;
+    newNode->height = 1;
+    node = newNode;
+    return node;
+  } else if (pid > node->pid) {
+    node->right = insert(node->right, pid, pcbIndex);
+    updateHeight(node);
+  } else if (pid < node->pid) {
+    node->left = insert(node->left, pid, pcbIndex);
+    updateHeight(node);
+  } else {
+    node->pcbIndex = pcbIndex;
+    return node;
+  }
+
+  /* Retore Balance */
+  if (balanceFactor(node) > 1) {
+    // New inserted in left subtree caused imbalance
+    if (balanceFactor(node->left) < 0) {
+      node->left = rotateLeft(node->left);
+    }
+    node = rotateRight(node);
+  } else if (balanceFactor(node) < -1) {
+    // New inserted in right subtree caused imbalance
+    if (balanceFactor(node->right) > 0) {
+      node->right = rotateRight(node->right);
+    }
+    node = rotateLeft(node);
+  }
+  return node; 
+}
+
+/*
+ * Recursive binary tree lookup
+ */
+static int lookup(treeNode* node, unsigned int pid, unsigned int *pcbIndex) {
+  if (!node) {
+    return 0;
+  } else if (node->pid == pid) {
+    *pcbIndex = node->pcbIndex;
+    return OK;
+  } else if (pid > node->pid) {
+    return lookup(node->right, pid, pcbIndex);
+  } else {
+    return lookup(node->left, pid, pcbIndex);
+  }
+}
+
+/*
+ * Returns the element with the largest key that is less then node's key in node's subtree
+ */
+treeNode* predecessor(treeNode* node) {
+  treeNode *pred = node->left;
+  while (pred && pred->right)
+    pred = pred->right;
+  return pred;
+}
+
+/*
+ * Removes a node from tree 
+ */
+static treeNode* delete(treeNode* node, unsigned int pid) {
+  treeNode *pred, *child;
+  if (!node) {
+    // PID not in tree, nothing to do
+    return NULL;
+  } else if (node->pid == pid) {
+    if (node->left && node->right) {
+      // Node has 2 children
+      pred = predecessor(node);
+      node->pid = pred->pid;
+      node->pcbIndex = pred->pcbIndex;
+      node->left = delete(node->left, pred->pid);
     } else {
-        head = p;
+      // Node has 1 child or no child, child has no children since tree is balanced
+      child = node->left ? node->left : node->right;
+      kfree(node);
+      return child;
     }
-
-    tail = p;
-}
-
-extern pcb      *next( void ) {
-/*****************************/
-
-    pcb *p;
-
-    p = head;
-
-    if( p ) {
-        head = p->next;
-        if( !head ) {
-            tail = NULL;
-        }
-    } else {
-        kprintf( "BAD\n" );
-        for(;;);
-    }
-
-    p->next = NULL;
-    p->prev = NULL;
-    return( p );
-}
-
-
-extern pcb *findPCB( int pid ) {
-/******************************/
-
-    int	i;
-
-    for( i = 0; i < MAX_PROC; i++ ) {
-        if( proctab[i].pid == pid ) {
-            return( &proctab[i] );
-        }
-    }
-
-    return( NULL );
+  } else if (pid > node->pid) { 
+    node->right = delete(node->right, pid);
+  } else {
+    node->left = delete(node->left, pid);
+  }
+  return node;
 }

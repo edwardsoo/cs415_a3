@@ -3,78 +3,50 @@
 
 #include <xeroskernel.h>
 
+/* Your code goes here */
+pcb *sleep_list;
 
-#define MILLISECONDS_TICK 10
-static pcb	*sleepQ;
+/*
+ * Decrements key of head of the delta list,
+ * puts all process with key == 0 on ready queue
+ */
+void tick() {
+  pcb *p;
 
-
-// Len is the length of time to sleep
-
-void	sleep( pcb *p, int len ) {
-/****************************************/
-
-    pcb	*tmp;
-
-
-    if( len < 1 ) {
-        ready( p );
-        return;
+  if (sleep_list) {
+    sleep_list->delta--;
+    while (sleep_list->delta == 0) {
+      p = sleep_list;
+      p->irc = 0;
+      sleep_list = p->next;
+      ready(p);
     }
-
-    // Convert the length of time to sleep in ticks
-    // each tick is 10ms 
-    len = len / MILLISECONDS_TICK;
-
-    p->state = STATE_SLEEP;
-    p->next = NULL;
-    p->prev = NULL;
-    if( !sleepQ ) {
-        sleepQ = p;
-        p->sleepdiff = len;
-    } else if( sleepQ->sleepdiff > len ) {
-        p->next = sleepQ;
-        sleepQ->sleepdiff -= len;
-        p->sleepdiff = len;
-        sleepQ = p;
-    } else {
-        len -= sleepQ->sleepdiff;
-        for( tmp = sleepQ; tmp->next; tmp = tmp->next ) {
-            if( len < tmp->next->sleepdiff ) {
-                break;
-            } else {
-                len -= tmp->next->sleepdiff;
-            }
-        }
-
-        p->next = tmp->next;
-        p->prev = tmp;
-        p->sleepdiff = len;
-        tmp->next = p;
-        if( p->next ) {
-            p->next->prev = p;
-            p->next->sleepdiff -= len;
-        }
-    }
+  }
 }
 
+/*
+ * Insert a process into the delta list 
+ */
+void sleep(pcb *p, unsigned int milliseconds) {
+  unsigned int delta;
+  pcb** next;
 
-extern void	tick( void ) {
-/****************************/
-
-    pcb	*tmp;
-
-    if( !sleepQ ) {
-        return;
+  delta = (milliseconds/TIME_SLICE_MS) + (milliseconds%TIME_SLICE_MS?1:0);
+  if (delta) {
+    next = &sleep_list;
+    // Traverse the delta list
+    while (*next && (*next)->delta <= delta) {
+      // Adjust the delta value of the sleep process
+      delta -= (*next)->delta;
+      next = &(*next)->next;
     }
-
-    for( sleepQ->sleepdiff--; sleepQ && !sleepQ->sleepdiff; ) {
-        tmp = sleepQ;
-        sleepQ = tmp->next;
-
-        tmp->state = STATE_READY;
-        tmp->next = NULL;
-        tmp->prev = NULL;
-        tmp->ret = 0;
-        ready( tmp );
+    p->next = *next;
+    p->delta = delta;
+    if (p->next) {
+      p->next->delta -= delta;
     }
+    *next = p;
+  } else {
+    ready(p);
+  }
 }
