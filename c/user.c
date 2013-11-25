@@ -33,6 +33,10 @@ void consumer(void) {
 
 #define NUM_CHILDREN 4
 void root() {
+  sysputs("root process, does nothing lol\n");
+}
+
+void root_2() {
   unsigned int child[NUM_CHILDREN], self, milliseconds;
   int i, rc;
   char str[0x100], *printout;

@@ -13,7 +13,7 @@ extern pcb *idle;
 extern void set_evec(unsigned int xnum, unsigned long handler);
 extern void initSyscall(void);
 extern void enableTimerInterrupt(void);
-extern void initPcb(void);
+extern void init_pcb_table(void);
 extern void dispatch(void);
 extern void kmeminit(void);
 extern int create (void (*func)(void), int stack, int parent);
@@ -54,7 +54,7 @@ void initproc( void )
   // Test without pre-emption
   kmeminit();
   initSyscall();
-  initPcb();
+  init_pcb_table();
 
   testKmalloc();
   kprintf("Passed memory test 1\n");
@@ -70,20 +70,20 @@ void initproc( void )
   kprintf("Passed messaging test\n");
   testSleepList();
   kprintf("Passed sleep list test\n");
-  test_signal();
-  kprintf("Passed signal tests\n");
   
   // Test with pre-emption
   enableTimerInterrupt();
   testTimeSharing();
   kprintf("Passed time sharing test\n");
+  test_signal();
+  kprintf("Passed signal tests\n");
   kprintf("Passed all tests\n");
   #endif
 
   // Init memory management
   kmeminit();
   // Init some PCB stuff
-  initPcb();
+  init_pcb_table();
   // Set ISR for syscall interrupt
   initSyscall();
   // Enable pre-emption
@@ -900,16 +900,37 @@ void testTimeSharing(void) {
 }
 
 void test_sig_handler(void *ptr) {
-  sysputs("this is a robbery/n");
+  char str[0x100];
+  int me = sysgetpid();
+  sprintf(str, "Process %03u received signal, calling sysstop now\n", me);
+  sysputs(str);
+  sysstop();
 }
 
 #define TEST_SIG 20
 void test_syssighandler(void) {
   int rc;
+  void* ptr;
   handler old;
 
   rc = syssighandler(-1, NULL, NULL);
   assertEquals(rc, -1);
+
+  rc = syssighandler(32, NULL, NULL);
+  assertEquals(rc, -1);
+
+  rc = syssighandler(0, test_sig_handler, &old);
+  assertEquals(rc, 0);
+  assertEquals(old, NULL);
+
+  rc = syssighandler(31, test_sig_handler, &old);
+  assertEquals(rc, 0);
+  assertEquals(old, NULL);
+
+  ptr = kmalloc(sizeof(int) * 4);
+  rc = syssighandler(TEST_SIG, (handler) ptr, &old);
+  kfree(ptr);
+  assertEquals(rc, -2);
 
   rc = syssighandler(TEST_SIG, test_sig_handler, &old);
   assertEquals(rc, 0);
@@ -919,14 +940,68 @@ void test_syssighandler(void) {
   assertEquals(old, test_sig_handler);
 }
 
+void signal_blocked_wait(void) {
+  
+}
+
+// This function registers a signal handler and loops waiting to be stopped
+void signal_loop_wait(void) {
+  unsigned int me, ppid;
+  int rc;
+  char str[0x100];
+
+  me = sysgetpid();
+  ppid = sysgetppid();
+  assertEquals(rc, 0);
+  syssighandler(TEST_SIG, test_sig_handler, NULL);
+  sprintf(str, "Process %03u registered handler for signal %d, entering loop...\n",
+      me, TEST_SIG);
+  rc = syssend(ppid, NULL, 0);
+  sysputs(str);
+  while(1);
+  sprintf(str, "%s(%u): should not reach here\n", __func__, __LINE__);
+  sysputs(str);
+}
+
+void test_syssigkill(void) {
+  int rc;
+  unsigned int pid, me;
+  char str[0x100];
+
+  me = sysgetpid();
+  rc = syskill(0xdeadbeef, TEST_SIG);
+  assertEquals(rc, -33);
+
+  pid = syscreate(signal_loop_wait, TEST_STACK_SIZE);
+  sprintf(str, "Process %03u created process %03d\n", me, pid);
+  sysputs(str);
+
+  rc = syskill(pid, -1);
+  assertEquals(rc, -12);
+
+  rc = sysrecv(&pid, NULL, 0);
+  assertEquals(rc, 0);
+  sprintf(str, "Process %03u sending signal %d to process %03u\n",
+      me, TEST_SIG, pid);
+  sysputs(str);
+  rc = syskill(pid, TEST_SIG);
+  assertEquals(rc, 0);
+}
+
 void test_signal(void) {
   unsigned int pid, pcb_index;
 
   // Test registering signal handlers
-  test_print("Test for registering signal handlers:\n");
+  test_print("Tests for syssighandler:\n");
   pid = create(test_syssighandler, TEST_STACK_SIZE, NULL);
   pidMapLookup(pid, &pcb_index);
   
+  dispatch();
+
+  // Test syssigkill
+  test_print("Tests for syssigkill:\n");
+  pid = create(test_syssigkill, TEST_STACK_SIZE, NULL);
+
   dispatch();
 }
 

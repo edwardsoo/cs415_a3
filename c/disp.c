@@ -12,22 +12,14 @@ extern void end_of_intr(void);
 extern long freemem;
 extern void deliver_signal(pcb* p);
 extern int signal(unsigned int pid, int sig_no);
-static void sighandler(pcb* p, int signal, handler new_h, handler* old_h);
-extern const char* syscall_str[] = {
+extern void register_sig_handler(pcb* p, int signal, handler, handler*);
+const char* syscall_str[] = {
   "TIME_INT", "CREATE", "YIELD", "STOP", "GET_PID", "GET_P_PID", "PUTS",
   "SEND", "RECV", "SYS_TIMER", "SLEEP", "SIGHANDLER", "SIGRETURN", "KILL",
   "SIGWAIT"
 };
 
-
-/* AVL tree functions */
-static int balanceFactor(treeNode*);
-static void updateHeight(treeNode*);
-static treeNode* rotateLeft(treeNode*);
-static treeNode* rotateRight(treeNode*node);
-static treeNode* insert(treeNode*, unsigned int, unsigned int);
-static int lookup(treeNode*, unsigned int, unsigned int *);
-static treeNode* delete(treeNode*, unsigned int);
+void cleanup(pcb* p);
 
 // Some process management variables
 pcb pcbTable[MAX_NUM_PROCESS];
@@ -42,6 +34,126 @@ void idleproc(void) {
   }
 }
 
+
+void dispatch(void) {
+  int rc, pid, sig_no;
+  va_list ap;
+  unsigned int dest_pid, *from_pid;
+  request_type request;
+  pcb *p;
+  signal_frame *sig_frame;
+  funcptr fp;
+  handler new_h, *old_h;
+
+  for (p = next(); p != NULL;) {
+    p->state = RUNNING;
+    deliver_signal(p);
+    request = contextswitch(p);
+    // kprintf("request type: %s\n", syscall_str[request]);
+    handle_request:
+    ap = (va_list) p->iargs;
+    switch (request) {
+      case (CREATE):
+        fp = (funcptr) va_arg(ap, int);
+        pid = create(fp, va_arg(ap, int), p->pid);
+        ready(p);
+        p->irc = pid; 
+        break;
+      case YIELD: 
+        ready(p);
+        break;
+      case STOP:
+        cleanup(p);
+        break;
+      case GET_PID:
+        p->irc = p->pid;
+        ready(p);
+        break;
+      case GET_P_PID:
+        p->irc = p->parentPid;
+        ready(p);
+        break;
+      case PUTS:
+        kprintf((char*) va_arg(ap, int));
+        ready(p);
+        break;
+      case SEND:
+        dest_pid = (unsigned int) va_arg(ap, unsigned int);
+        send(p, dest_pid);
+        break;
+      case RECV:
+        from_pid = (unsigned int*) va_arg(ap, unsigned int);
+        receive(p, from_pid);
+        break;
+      case SYS_TIMER:
+        ready(p);
+        tick();
+        end_of_intr();
+        break;
+      case SLEEP:
+        sleep(p, (unsigned int) va_arg(ap, int));
+        break;
+      case TIME_INT:
+        request = contextswitch(p);
+        goto  handle_request;
+        break;
+      case SIGHANDLER:
+        sig_no = va_arg(ap, int);
+        new_h = (handler) va_arg(ap, int);
+        old_h = (handler*) va_arg(ap, int);
+        register_sig_handler(p, sig_no, new_h, old_h);
+        ready(p);
+        break;
+      case SIGRETURN:
+        p->esp = (unsigned int) va_arg(ap, int);
+        sig_frame = (signal_frame*) p->esp - sizeof(signal_frame);
+        p->hi_sig = sig_frame->old_hi_sig;
+        p->irc = sig_frame->old_irc; 
+        ready(p);
+        break;
+      case KILL:
+        dest_pid = (unsigned int) va_arg(ap, int);
+        sig_no = va_arg(ap, int);
+        rc = signal(dest_pid, sig_no);
+        if (rc == -1) {
+          p->irc = -33;
+        } else if (rc == -2) {
+          p->irc = -12;
+        } else {
+          p->irc = 0;
+        }
+        ready(p);
+        break;
+      case SIGWAIT:
+        p->state = WAITING;
+        break;
+      default:
+        break;
+    }
+
+    p = next();
+    // Try to not run the idle process if there are others in queue
+    if (idle != NULL && p == idle) {
+      p = next();
+      if (p == NULL) {
+        p = idle;
+      } else {
+        ready(idle);
+      }
+    }
+
+  }
+}
+
+/* PID to PCB indx lookup map functions */
+static int balanceFactor(treeNode*);
+static void updateHeight(treeNode*);
+static treeNode* rotateLeft(treeNode*);
+static treeNode* rotateRight(treeNode*node);
+static treeNode* insert(treeNode*, unsigned int, unsigned int);
+static int lookup(treeNode*, unsigned int, unsigned int *);
+static treeNode* delete(treeNode*, unsigned int);
+
 void pidMapInsert(unsigned int pid, unsigned int pcbIndex) {
   pidMap = insert(pidMap, pid, pcbIndex);
 }
@@ -54,7 +166,9 @@ int pidMapLookup(unsigned int pid, unsigned int *pcbIndex) {
   return lookup(pidMap, pid, pcbIndex);
 }
 
-void initPcb(void) {
+
+/* PCB queues, init, and cleanup functions */
+void init_pcb_table(void) {
   unsigned int i;
 
   for (i = 0; i < MAX_NUM_PROCESS; i++) {
@@ -118,139 +232,6 @@ void cleanup(pcb* p) {
   pidMapDelete(p->pid);
 }
 
-void dispatch(void) {
-  int rc, pid, sig_no;
-  va_list ap;
-  unsigned int dest_pid, *from_pid;
-  request_type request;
-  pcb *p;
-  signal_frame *sig_frame;
-  funcptr fp;
-  handler new_h, *old_h;
-
-  for (p = next(); p != NULL;) {
-    p->state = RUNNING;
-    // deliver_signal(p);
-    request = contextswitch(p);
-    // kprintf("request type: %s\n", syscall_str[request]);
-    handle_request:
-    ap = (va_list) p->iargs;
-    switch (request) {
-      case (CREATE):
-        fp = (funcptr) va_arg(ap, int);
-        pid = create(fp, va_arg(ap, int), p->pid);
-        ready(p);
-        p->irc = pid; 
-        break;
-      case YIELD: 
-        ready(p);
-        break;
-      case STOP:
-        cleanup(p);
-        break;
-      case GET_PID:
-        p->irc = p->pid;
-        ready(p);
-        break;
-      case GET_P_PID:
-        p->irc = p->parentPid;
-        ready(p);
-        break;
-      case PUTS:
-        kprintf((char*) va_arg(ap, int));
-        ready(p);
-        break;
-      case SEND:
-        dest_pid = (unsigned int) va_arg(ap, unsigned int);
-        send(p, dest_pid);
-        break;
-      case RECV:
-        from_pid = (unsigned int*) va_arg(ap, unsigned int);
-        receive(p, from_pid);
-        break;
-      case SYS_TIMER:
-        ready(p);
-        tick();
-        end_of_intr();
-        break;
-      case SLEEP:
-        sleep(p, (unsigned int) va_arg(ap, int));
-        break;
-      case TIME_INT:
-        request = contextswitch(p);
-        goto  handle_request;
-        break;
-      case SIGHANDLER:
-        sig_no = va_arg(ap, int);
-        new_h = (handler) va_arg(ap, int);
-        old_h = (handler*) va_arg(ap, int);
-        sighandler(p, sig_no, new_h, old_h);
-        ready(p);
-        break;
-      case SIGRETURN:
-        p->esp = (unsigned int) va_arg(ap, int);
-        sig_frame = (signal_frame*) p->esp - sizeof(signal_frame);
-        p->hi_sig = sig_frame->old_hi_sig;
-        p->irc = sig_frame->old_irc; 
-        ready(p);
-        break;
-      case KILL:
-        dest_pid = (unsigned int) va_arg(ap, int);
-        sig_no = va_arg(ap, int);
-        rc = signal(dest_pid, sig_no);
-        if (rc == -1) {
-          p->irc = -33;
-        } else if (rc == -2) {
-          p->irc = -12;
-        } else {
-          p->irc = 0;
-        }
-        ready(p);
-        break;
-      case SIGWAIT:
-        p->state = WAITING;
-        break;
-      default:
-        break;
-    }
-
-    p = next();
-    // Try to not run the idle process if there are others in queue
-    if (idle != NULL && p == idle) {
-      p = next();
-      if (p == NULL) {
-        p = idle;
-      } else {
-        ready(idle);
-      }
-    }
-
-  }
-}
-
-void sighandler(pcb* p, int signal, handler new_handler, handler* old_handler) {
-  if (signal < 0 || signal >= NUM_SIGNAL) {
-    p->irc = -1;
-    return;
-  }
-
-  if (old_handler) {
-    *old_handler = p->sig_handler[signal];
-  }
-
-  if ((long) new_handler >= freemem) {
-    p->irc = -2;
-    return;
-  }
-
-  p->sig_handler[signal] = new_handler;
-  if (new_handler == NULL) {
-    p->allowed_sig &= ~(SIG_INT(signal));
-  } else {
-    p->allowed_sig |= SIG_INT(signal);
-  }
-  p->irc = 0;
-}
 
 /******************************************************************************
   AVL tree implementations
