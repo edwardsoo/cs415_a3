@@ -10,7 +10,17 @@ extern int contextswitch(pcb* );
 extern int create (void (*func)(void), int stack, unsigned int parent);
 extern void end_of_intr(void);
 extern long freemem;
+extern void deliver_signal(pcb* p);
+extern int signal(unsigned int pid, int sig_no);
+static void sighandler(pcb* p, int signal, handler new_h, handler* old_h);
+extern const char* syscall_str[] = {
+  "TIME_INT", "CREATE", "YIELD", "STOP", "GET_PID", "GET_P_PID", "PUTS",
+  "SEND", "RECV", "SYS_TIMER", "SLEEP", "SIGHANDLER", "SIGRETURN", "KILL",
+  "SIGWAIT"
+};
 
+
+/* AVL tree functions */
 static int balanceFactor(treeNode*);
 static void updateHeight(treeNode*);
 static treeNode* rotateLeft(treeNode*);
@@ -109,16 +119,20 @@ void cleanup(pcb* p) {
 }
 
 void dispatch(void) {
-  funcptr fp;
-  handler new_handler, *old_handler;
-  int request, pid, signal;
-  pcb *p;
+  int rc, pid, sig_no;
   va_list ap;
   unsigned int dest_pid, *from_pid;
+  request_type request;
+  pcb *p;
+  signal_frame *sig_frame;
+  funcptr fp;
+  handler new_h, *old_h;
 
   for (p = next(); p != NULL;) {
     p->state = RUNNING;
+    // deliver_signal(p);
     request = contextswitch(p);
+    // kprintf("request type: %s\n", syscall_str[request]);
     handle_request:
     ap = (va_list) p->iargs;
     switch (request) {
@@ -154,7 +168,7 @@ void dispatch(void) {
         from_pid = (unsigned int*) va_arg(ap, unsigned int);
         receive(p, from_pid);
         break;
-      case TIMER_INT:
+      case SYS_TIMER:
         ready(p);
         tick();
         end_of_intr();
@@ -167,11 +181,35 @@ void dispatch(void) {
         goto  handle_request;
         break;
       case SIGHANDLER:
+        sig_no = va_arg(ap, int);
+        new_h = (handler) va_arg(ap, int);
+        old_h = (handler*) va_arg(ap, int);
+        sighandler(p, sig_no, new_h, old_h);
         ready(p);
-        signal = va_arg(ap, int);
-        new_handler = (handler) va_arg(ap, int);
-        old_handler = (handler*) va_arg(ap, int);
-        sighandler(p, signal, new_handler, old_handler);
+        break;
+      case SIGRETURN:
+        p->esp = (unsigned int) va_arg(ap, int);
+        sig_frame = (signal_frame*) p->esp - sizeof(signal_frame);
+        p->hi_sig = sig_frame->old_hi_sig;
+        p->irc = sig_frame->old_irc; 
+        ready(p);
+        break;
+      case KILL:
+        dest_pid = (unsigned int) va_arg(ap, int);
+        sig_no = va_arg(ap, int);
+        rc = signal(dest_pid, sig_no);
+        if (rc == -1) {
+          p->irc = -33;
+        } else if (rc == -2) {
+          p->irc = -12;
+        } else {
+          p->irc = 0;
+        }
+        ready(p);
+        break;
+      case SIGWAIT:
+        p->state = WAITING;
+        break;
       default:
         break;
     }
@@ -206,6 +244,11 @@ void sighandler(pcb* p, int signal, handler new_handler, handler* old_handler) {
   }
 
   p->sig_handler[signal] = new_handler;
+  if (new_handler == NULL) {
+    p->allowed_sig &= ~(SIG_INT(signal));
+  } else {
+    p->allowed_sig |= SIG_INT(signal);
+  }
   p->irc = 0;
 }
 

@@ -72,7 +72,20 @@ unsigned int syssleep(unsigned int milliseconds) {
 }
 
 int syssighandler(int signal, void (*newhandler)(void *), void (** oldHandler)(void *)) {
-  return syscall(SIGHANDLER, newhandler, oldHandler);
+  return syscall(SIGHANDLER, signal, newhandler, oldHandler);
+}
+
+void syssigreturn(void *old_sp) {
+  syscall(SIGRETURN, old_sp);
+  // jokes on you, it does not return, haha
+}
+
+int syskill(unsigned int pid, int signal) {
+  return syscall(KILL, pid, signal);
+}
+
+int syssigwait() {
+  return syscall(SIGWAIT);
 }
 
 // Experimental function to time a context switch by calling 
@@ -87,7 +100,7 @@ unsigned long time_int(void) {
   // call rdtsc again and do some math to get cycles elapsed
   __asm __volatile(
     "push $0;\n"
-    "push $" xstr(TIME_INT) ";\n"
+    "push $0;\n"
     "rdtsc;\n"
     "movl %%eax, %%ecx;\n"
     "movl %%edx, %%ebx;\n"

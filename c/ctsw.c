@@ -16,6 +16,7 @@ static int rc, interrupt;
 
 extern void set_evec(unsigned int xnum, unsigned long handler);
 extern void initPIT( int divisor );
+extern const char* syscall_str[];
 void debugContextFrame(contextFrame*, unsigned int);
 
 /* Declaration of _ISREntryPoint, which enter contextswitch midway */
@@ -59,7 +60,7 @@ extern int contextswitch(pcb* p) {
   "_InterruptEntryPoint:\n"
     "cli;\n"
     "pusha;\n"
-    "movl $" xstr(TIMER_INT) ", %%ecx;\n"
+    "movl $1, %%ecx;\n"
     "jmp _CommonJump;\n"
   "_ISREntryPoint:\n"
     "cli;\n"
@@ -79,7 +80,7 @@ extern int contextswitch(pcb* p) {
 
   if (interrupt) {
     p->irc = rc;
-    return interrupt;
+    return SYS_TIMER;
   } else {
     // Put argument pointer in PCB for dispatcher
     p->iargs= context->args[1];

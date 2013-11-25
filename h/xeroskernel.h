@@ -21,18 +21,10 @@ typedef	char		Bool;		/* Boolean type			*/
 #define	BLOCKERR	-5		/* non-blocking op would block	*/
 
 // Context switch syscall request types
-#define TIME_INT 0
-#define CREATE TIME_INT + 1
-#define YIELD  CREATE + 1
-#define STOP   YIELD + 1
-#define GET_PID STOP + 1
-#define GET_P_PID GET_PID + 1
-#define PUTS GET_P_PID + 1
-#define SEND PUTS + 1
-#define RECV SEND + 1
-#define TIMER_INT RECV + 1
-#define SLEEP TIMER_INT + 1
-#define SIGHANDLER SLEEP + 1
+typedef enum {
+  TIME_INT, CREATE, YIELD, STOP, GET_PID, GET_P_PID, PUTS, SEND, RECV,
+  SYS_TIMER, SLEEP, SIGHANDLER, SIGRETURN, KILL, SIGWAIT
+} request_type;
 
 // Kernel global defines
 #define SYSCALL 80
@@ -65,6 +57,9 @@ typedef	char		Bool;		/* Boolean type			*/
        __typeof__ (b) _b = (b); \
      _a < _b ? _a : _b; })
 
+// mask operations
+#define SIG_INT(sig) (1 << sig)
+
 // Memory block header
 typedef struct _memHeader {
   unsigned long size; // Size of the usable memory of this node
@@ -78,7 +73,7 @@ typedef struct _memHeader {
 typedef struct _pcb {
   unsigned int pid; // Process ID
   unsigned int parentPid; // Parent process ID
-  enum {STOPPED = 0, RUNNING, READY, SENDING, READING, SLEEPING} state;
+  enum {STOPPED = 0, RUNNING, READY, SENDING, READING, SLEEPING, WAITING} state;
   struct _pcb *next; // Next process in ready/send queue
   struct _pcb *senders ,*receivers; // Head of queue of senders & receivers
   unsigned int esp;
@@ -87,6 +82,9 @@ typedef struct _pcb {
   unsigned int iargs; // Interrupt arguments pointer
   unsigned int delta; // Time slice left to be waken
   void (*sig_handler[32])(void*); // signal handlers
+  unsigned int pending_sig;
+  unsigned int allowed_sig;
+  unsigned int hi_sig;
 } pcb;
 
 typedef void (*funcptr)(void);
@@ -108,6 +106,15 @@ typedef struct _contextFrame {
   unsigned int args[0];
 } contextFrame;
 
+typedef struct _signal_frame {
+  contextFrame new_cntx;
+  unsigned int ret_addr;
+  unsigned int handler;
+  unsigned int cntx;
+  unsigned int old_sp;
+  unsigned int old_hi_sig;
+  unsigned int old_irc;
+} signal_frame;
 
 /* PCB queues struct and functions */
 typedef struct _pcbQueue {
@@ -142,7 +149,10 @@ extern void sysputs(char*);
 extern int syssend( unsigned int dest_pid, void *buffer, int buffer_len);
 extern int sysrecv( unsigned int *from_pid, void *buffer, int buffer_len );
 extern unsigned int syssleep(unsigned int milliseconds);
-int syssighandler(int signal, handler new_handler, handler* old_handler);
+extern void syssigreturn(void *old_sp);
+extern int syssighandler(int signal, handler new_handler, handler* old_handler);
+extern int syskill(unsigned int pid, int signal);
+extern int syssigwait(void);
 
 /* Messaging */
 #define SYS_SR_NO_PID -1
@@ -158,7 +168,6 @@ extern void tick(void);
 extern void sleep(pcb*, unsigned int);
 
 /* Signaling */
-void sighandler(pcb* p, int signal, handler new_handler, handler* old_handler);
 
 /* Misc functions */
 extern unsigned long time_int(void);
@@ -185,7 +194,7 @@ void inline abort(void);
     kprintf("%s(%u): Assertion failed: (%s) not true\n", __func__, __LINE__, xstr(C));\
     for(;;);\
   }
-#define WHERE(); \
+#define where(); \
   kprintf("%s(%u)\n", __func__, __LINE__);
 
 

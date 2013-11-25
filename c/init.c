@@ -41,21 +41,7 @@ void traverseSleepList(void) {
   kprintf("\n");
 }
 
-/************************************************************************/
-/***				NOTE:				      ***/
-/***								      ***/
-/***   This is where the system begins after the C environment has    ***/
-/***   been established.  Interrupts are initially DISABLED.  The     ***/
-/***   interrupt table has been initialized with a default handler    ***/
-/***								      ***/
-/***								      ***/
-/************************************************************************/
-
-/*------------------------------------------------------------------------
- *  The init process, this is where it all begins...
- *------------------------------------------------------------------------
- */
-void initproc( void )				/* The beginning */
+void initproc( void )
 {
   int pid;
   unsigned int pcb_index;
@@ -917,8 +903,7 @@ void test_sig_handler(void *ptr) {
   sysputs("this is a robbery/n");
 }
 
-#define SIG_0 0
-
+#define TEST_SIG 20
 void test_syssighandler(void) {
   int rc;
   handler old;
@@ -926,8 +911,12 @@ void test_syssighandler(void) {
   rc = syssighandler(-1, NULL, NULL);
   assertEquals(rc, -1);
 
-  rc = syssighandler(SIG_0, test_sig_handler, &old);
+  rc = syssighandler(TEST_SIG, test_sig_handler, &old);
   assertEquals(rc, 0);
+
+  rc = syssighandler(TEST_SIG, NULL, &old);
+  assertEquals(rc, 0);
+  assertEquals(old, test_sig_handler);
 }
 
 void test_signal(void) {
@@ -939,7 +928,6 @@ void test_signal(void) {
   pidMapLookup(pid, &pcb_index);
   
   dispatch();
-  assertEquals(pcbTable[pcb_index].sig_handler[SIG_0], test_sig_handler);
 }
 
 

@@ -80,6 +80,14 @@ int create (void (*func)(void), int stack, unsigned int parent) {
       // Setup stack so process calls sysstop when run out of code
       context->args[0] = (unsigned int) sysstop;
 
+      // Disable all signals
+      for (i = 0; i < NUM_SIGNAL; i++) {
+        pcb->sig_handler[i] = NULL;
+      }
+      pcb->pending_sig = 0;
+      pcb->allowed_sig = 0;
+      pcb->hi_sig = 0xFFFFFFFF;
+
       // Add to ready queue
       ready(pcb);
       pcb->state = READY;
