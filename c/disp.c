@@ -47,8 +47,8 @@ void dispatch(void) {
 
   for (p = next(); p != NULL;) {
     to_ready = NULL;
-    p->state = RUNNING;
     deliver_signal(p);
+    p->state = RUNNING;
     request = contextswitch(p);
     handle_request:
     ap = (va_list) p->iargs;
@@ -91,7 +91,6 @@ void dispatch(void) {
         end_of_intr();
         break;
       case SLEEP:
-        // kprintf("pid %u wants to sleep\n", p->pid);
         sleep(p, (unsigned int) va_arg(ap, int));
         break;
       case TIME_INT:
@@ -99,7 +98,6 @@ void dispatch(void) {
         goto  handle_request;
         break;
       case SIGHANDLER:
-        // kprintf("pid %u wants to set sighandler\n", p->pid);
         sig_no = va_arg(ap, int);
         new_h = (handler) va_arg(ap, int);
         old_h = (handler*) va_arg(ap, int);
@@ -107,7 +105,6 @@ void dispatch(void) {
         to_ready = p;
         break;
       case SIGRETURN:
-        // kprintf("pid %u wants to sigreturn\n", p->pid);
         p->esp = (unsigned int) va_arg(ap, int);
         kprintf("PID %d sigreturn old_sp 0x%x\n", p->pid, p->esp);
         sig_frame = (signal_frame*) (p->esp - sizeof(signal_frame));
@@ -141,8 +138,9 @@ void dispatch(void) {
     }
 
     // if (request != SYS_TIMER) {
-    //   kprintf("pid %u sp 0x%x request %s: ", p->pid, p->esp, syscall_str[request]);
-    //   print_ready_q();
+    //   kprintf("PID:%u SP:0x%x state:%d request:%s:\n",
+    //       p->pid, p->esp, p->state, syscall_str[request]);
+    //   // print_ready_q();
     // }
 
     p = next();
@@ -203,6 +201,7 @@ pcb *next(void) {
   pcb *next = ready_queue;
   if (next) {
     ready_queue = next->next;
+    next->next = NULL;
   }
   return next;
 }
@@ -240,7 +239,6 @@ void cleanup(pcb* p) {
   p->stack = NULL;
   p->state = STOPPED;
   pidMapDelete(p->pid);
-  kprintf("cleaned PID %d\n", p->pid);
 }
 
 

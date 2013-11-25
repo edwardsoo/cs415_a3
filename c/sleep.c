@@ -46,6 +46,7 @@ void sleep(pcb *p, unsigned int milliseconds) {
       p->next->delta -= delta;
     }
     *next = p;
+    p->state = SLEEPING;
   } else {
     ready(p);
   }

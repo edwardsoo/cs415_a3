@@ -1052,7 +1052,7 @@ void test_syssigkill(void) {
   rc = sysrecv(&pid, &msg, sizeof(int));
   assertEquals(rc, sizeof(int));
   assertEquals(msg, pid);
-  syssleep(5000);
+  syssleep(1500);
 
   // Zap that blocked receiving retarded
   sprintf(str, "Process %03u sending signal %d to process %03u\n",
@@ -1129,24 +1129,26 @@ void test_syssigwait(void) {
 #define SIG_MID 16
 #define SIG_HI 31
 void send_sig_lo(void* cntx) {
-  unsigned int me;
+  unsigned int me, pid;
 
   me = sysgetpid();
   char str[0x100];
-  sprintf(str, "Process %03d received signal %d, calling syssleep(5000)\n", me, SIG_LO);
+  sprintf(str, "Process %03d received signal %d, calling sysrecv\n", me, SIG_LO);
   sysputs(str);
-  syssleep(5000);
+  pid = 0;
+  sysrecv(&pid, NULL, 0);
   sprintf(str, "Process %03d signal %d handler returning\n", me, SIG_LO);
   sysputs(str);
 }
 void send_sig_mid(void* cntx) {
-  unsigned int me;
+  unsigned int me, pid;
 
   me = sysgetpid();
   char str[0x100];
-  sprintf(str, "Process %03d received signal %d, calling syssleep(5000)\n", me, SIG_MID);
+  sprintf(str, "Process %03d received signal %d, calling sysrecv\n", me, SIG_MID);
   sysputs(str);
-  syssleep(5000);
+  pid = 0;
+  sysrecv(&pid, NULL, 0);
   sprintf(str, "Process %03d signal %d handler returning\n", me, SIG_MID);
   sysputs(str);
 }
@@ -1161,9 +1163,7 @@ void send_sig_hi(void* cntx) {
   sprintf(str, "Process %03d received signal %d, calling syssend to process %03d\n",
       me, SIG_HI, ppid);
   sysputs(str);
-  where();
   syssend(ppid, &msg, sizeof(int)); 
-  where();
   sprintf(str, "Process %03d signal %d handler returning\n", me, SIG_HI);
   sysputs(str);
 }
@@ -1194,10 +1194,14 @@ void stack_sigtramp(void) {
 }
 
 void test_stack_sigtramp(void) {
-  unsigned int pid, me;
+  unsigned int pid, me, bg_pid;
   int rc, msg;
   char str[0x100];
 
+  // Create idle process to prevent dispatch returning
+  bg_pid = syscreate(idle_wait_sig, TEST_STACK_SIZE); 
+
+  // Create a child process that accepts signals of different priorities
   pid = syscreate(stack_sigtramp, TEST_STACK_SIZE);
   me = sysgetpid();
   sprintf(str, "Process %03u created process %03d\n", me, pid);
@@ -1229,7 +1233,7 @@ void test_stack_sigtramp(void) {
       me, pid, msg);
   sysputs(str);
   
-  for(;;);
+  rc = syskill(bg_pid, TEST_SIG);
 }
 
 void test_signal(void) {
@@ -1247,7 +1251,6 @@ void test_signal(void) {
   test_print("Tests for syssigwait:\n");
   create(test_syssigwait, TEST_STACK_SIZE, NULL);
   dispatch();
-  for(;;);
 
   // Test stacking sigtramp
   test_print("Tests for stacking sigtramp:\n");

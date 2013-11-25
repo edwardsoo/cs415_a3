@@ -66,7 +66,8 @@ int signal(unsigned int pid, int sig_no) {
       ready(p);
       p->irc = sig_no;
     } else {
-      kprintf("%s %u: Should not reach here\n", __func__, __LINE__);
+      kprintf("%s %u: Should not reach here, PID %d state %d\n",
+          __func__, __LINE__, p->pid, p->state);
       for(;;);
     }
   }
