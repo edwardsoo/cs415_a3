@@ -24,7 +24,7 @@ void cleanup(pcb* p);
 // Some process management variables
 pcb pcbTable[MAX_NUM_PROCESS];
 pcb *idle = NULL;
-pcbQueue readyQueue;
+pcb *ready_queue;
 treeNode *pidMap = NULL;
 unsigned int nextPid;
 
@@ -67,6 +67,7 @@ void dispatch(void) {
         break;
       case GET_PID:
         p->irc = p->pid;
+        // kprintf("pid %u wants to get its pid\n", p->pid);
         ready(p);
         break;
       case GET_P_PID:
@@ -91,6 +92,7 @@ void dispatch(void) {
         end_of_intr();
         break;
       case SLEEP:
+        // kprintf("pid %u wants to sleep\n", p->pid);
         sleep(p, (unsigned int) va_arg(ap, int));
         break;
       case TIME_INT:
@@ -98,6 +100,7 @@ void dispatch(void) {
         goto  handle_request;
         break;
       case SIGHANDLER:
+        // kprintf("pid %u wants to set sighandler\n", p->pid);
         sig_no = va_arg(ap, int);
         new_h = (handler) va_arg(ap, int);
         old_h = (handler*) va_arg(ap, int);
@@ -105,8 +108,9 @@ void dispatch(void) {
         ready(p);
         break;
       case SIGRETURN:
+        // kprintf("pid %u wants to sigreturn\n", p->pid);
         p->esp = (unsigned int) va_arg(ap, int);
-        sig_frame = (signal_frame*) p->esp - sizeof(signal_frame);
+        sig_frame = (signal_frame*) (p->esp - sizeof(signal_frame));
         p->hi_sig = sig_frame->old_hi_sig;
         p->irc = sig_frame->old_irc; 
         ready(p);
@@ -114,6 +118,7 @@ void dispatch(void) {
       case KILL:
         dest_pid = (unsigned int) va_arg(ap, int);
         sig_no = va_arg(ap, int);
+        // kprintf("pid %u syskill pid %u\n", p->pid, dest_pid);
         rc = signal(dest_pid, sig_no);
         if (rc == -1) {
           p->irc = -33;
@@ -130,6 +135,11 @@ void dispatch(void) {
       default:
         break;
     }
+
+    // if (request != SYS_TIMER) {
+    //   kprintf("pid %u request %s: ", p->pid, syscall_str[request]);
+    //   print_ready_q();
+    // }
 
     p = next();
     // Try to not run the idle process if there are others in queue
@@ -177,37 +187,30 @@ void init_pcb_table(void) {
     pcbTable[i].next = pcbTable[i].senders = pcbTable[i].receivers = NULL;
   }
   nextPid = 1;
-  readyQueue.front = readyQueue.back = NULL;
+  ready_queue = NULL;
   idle = NULL;
   pidMap = NULL;
 }
 
-/* Returns the a PCB pointer  */
+/* Returns a PCB pointer  */
 pcb *next(void) {
-  pcb *next = readyQueue.front;
-  if (next != NULL) { 
-    if (readyQueue.back == next) {
-      readyQueue.back = NULL;
-      readyQueue.front = NULL;
-    } 
-    readyQueue.front = next->next;
-    next->next = NULL;
-    // kprintf("next =  pid %u, ", next->pid);
+  pcb *next = ready_queue;
+  if (next) {
+    ready_queue = next->next;
   }
   return next;
 }
 
 void ready(pcb* process) {
-  // kprintf("ready pid %u, ", process->pid);
-  if (readyQueue.front == NULL) {
-    readyQueue.front = process;
-    readyQueue.back = process;
-  } else {
-    readyQueue.back->next = process;
-    readyQueue.back = process;
+  pcb **end;
+
+  end = &ready_queue;
+  while(*end) {
+    end = &((*end)->next);
   }
-  process->state = READY;
+  *end = process;
   process->next = NULL;
+  process->state = READY;
 }
 
 void cleanup(pcb* p) {
@@ -227,6 +230,7 @@ void cleanup(pcb* p) {
     ready(receiver);
   }
   kfree(p->stack);
+  p->next = NULL;
   p->stack = NULL;
   p->state = STOPPED;
   pidMapDelete(p->pid);

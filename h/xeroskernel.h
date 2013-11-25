@@ -117,9 +117,6 @@ typedef struct _signal_frame {
 } signal_frame;
 
 /* PCB queues struct and functions */
-typedef struct _pcbQueue {
-  pcb *front, *back;
-} pcbQueue;
 extern pcb* next(void);
 extern void ready(pcb*);
 
@@ -174,6 +171,7 @@ extern unsigned long time_int(void);
 extern void root(void);
 extern void semaphore_root(void);
 void inline abort(void);
+extern void print_ready_q(void);
 
 /* Test functions and macro */
 #if TEST_VERBOSE

@@ -90,7 +90,6 @@ int create (void (*func)(void), int stack, unsigned int parent) {
 
       // Add to ready queue
       ready(pcb);
-      pcb->state = READY;
       return pcb->pid;
 
     } else {

@@ -4,10 +4,10 @@ extern long freemem;
 extern pcb pcbTable[MAX_NUM_PROCESS];
 extern unsigned short getCS(void);
 extern void zeroRegisters(contextFrame *context);
+static int msb_1_pos(unsigned int x);
 
 void register_sig_handler(pcb* p, int signal,
     handler new_handler, handler* old_handler) {
-  // kprintf("registering signal %u with handler 0x%x\n", signal, new_handler);
 
   if (signal < 0 || signal >= NUM_SIGNAL) {
     p->irc = -1;
@@ -24,8 +24,6 @@ void register_sig_handler(pcb* p, int signal,
   }
 
   p->sig_handler[signal] = new_handler;
-  kprintf("process %d registered 0x%x as signal %d handler\n",
-      p->pid, new_handler, signal);
   if (new_handler == NULL) {
     p->allowed_sig &= ~(SIG_INT(signal));
   } else {
@@ -52,29 +50,25 @@ int signal(unsigned int pid, int sig_no) {
   }
 
   p = pcbTable + pcb_index;
-  kprintf("target pid %d, allowed_sig 0x%x, pending_sig 0x%x, hi_sig 0x%x\n",
-      pid, p->allowed_sig, p->pending_sig, p->hi_sig);  
 
   // Check if signal should be recorded for delivery
   if (p->allowed_sig & SIG_INT(sig_no)) {
-    kprintf("target pid %u record signal %d for delivery\n", p->pid, sig_no);
     p->pending_sig |= SIG_INT(sig_no);
+
+    // syscall blocked
+    if (p->state == READY) {
+    } else if (p->state > READY && p->state < WAITING) {
+      ready(p);
+      p->irc = -129;
+    } else if (p->state == WAITING) {
+      ready(p);
+      p->irc = sig_no;
+    } else {
+      kprintf("%s %u: Should not reach here\n", __func__, __LINE__);
+      for(;;);
+    }
   }
   return 0;
-}
-
-// returns the position of the most significant bit that is set
-// Algorithm from Hacker's delight
-int msb_1_pos(unsigned int x) {
-   int n;
-   if (x == 0) return (32);
-   n = 0;
-   if (x <= 0x0000FFFF) {n = n +16; x = x <<16;}
-   if (x <= 0x00FFFFFF) {n = n + 8; x = x << 8;}
-   if (x <= 0x0FFFFFFF) {n = n + 4; x = x << 4;}
-   if (x <= 0x3FFFFFFF) {n = n + 2; x = x << 2;}
-   if (x <= 0x7FFFFFFF) {n = n + 1;}
-   return n;
 }
 
 void deliver_signal(pcb* p) {
@@ -82,12 +76,10 @@ void deliver_signal(pcb* p) {
   signal_frame *sig_frame;
   int sig_no, sig_int;
 
-  // where();
   // check if there is a signal to deliver
   if (p->pending_sig & p->hi_sig) {
     // Get signal number to deliver
     sig_no = NUM_SIGNAL - msb_1_pos(p->pending_sig) - 1; 
-    kprintf("needs to deliver sig %u to pid %u\n", sig_no, p->pid);
 
     // Put signal frame on process stack
     new_cntx = (contextFrame*) (p->esp - sizeof(signal_frame));
@@ -107,11 +99,26 @@ void deliver_signal(pcb* p) {
     sig_frame->old_sp = (unsigned int) p->esp;
     sig_frame->old_hi_sig = (unsigned int) p->hi_sig;
     sig_frame->old_irc = (unsigned int) p->irc;
-    p->esp = new_cntx;
+    p->esp = (unsigned int) new_cntx;
 
-    // Update signal masks
+    // Update signal 
     sig_int = SIG_INT(sig_no);
     p->pending_sig &= ~sig_int;
     p->hi_sig = (~sig_int) - (sig_int - 1);
   }
 }
+
+// returns the position of the most significant bit that is set
+// Algorithm from Hacker's delight
+int msb_1_pos(unsigned int x) {
+   int n;
+   if (x == 0) return (32);
+   n = 0;
+   if (x <= 0x0000FFFF) {n = n +16; x = x <<16;}
+   if (x <= 0x00FFFFFF) {n = n + 8; x = x << 8;}
+   if (x <= 0x0FFFFFFF) {n = n + 4; x = x << 4;}
+   if (x <= 0x3FFFFFFF) {n = n + 2; x = x << 2;}
+   if (x <= 0x7FFFFFFF) {n = n + 1;}
+   return n;
+}
+
