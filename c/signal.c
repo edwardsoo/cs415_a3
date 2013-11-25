@@ -33,7 +33,9 @@ void register_sig_handler(pcb* p, int signal,
 }
 
 void sigtramp(handler handler, void *cntx, void *old_sp) {
+  kprintf("sigtramp calling handler\n");
   handler(cntx);
+  kprintf("sigtramp calling syssigreturn\n");
   syssigreturn(old_sp);
 }
 
@@ -92,6 +94,7 @@ void deliver_signal(pcb* p) {
     new_cntx->eflags = 0x3200;
 
     // Set up sigtramp arguments and values to be stored
+    kprintf("PID %d stored old_sp 0x%x\n", p->pid, p->esp);
     sig_frame = (signal_frame*) new_cntx;
     sig_frame->ret_addr = (unsigned int) sysstop;
     sig_frame->handler= (unsigned int) p->sig_handler[sig_no];

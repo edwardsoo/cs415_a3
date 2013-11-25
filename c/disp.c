@@ -39,44 +39,43 @@ void dispatch(void) {
   int rc, pid, sig_no;
   va_list ap;
   unsigned int dest_pid, *from_pid;
-  request_type request;
-  pcb *p;
+  request_type request = SYS_TIMER;
+  pcb *p, *to_ready;
   signal_frame *sig_frame;
   funcptr fp;
   handler new_h, *old_h;
 
   for (p = next(); p != NULL;) {
+    to_ready = NULL;
     p->state = RUNNING;
     deliver_signal(p);
     request = contextswitch(p);
-    // kprintf("request type: %s\n", syscall_str[request]);
     handle_request:
     ap = (va_list) p->iargs;
     switch (request) {
       case (CREATE):
         fp = (funcptr) va_arg(ap, int);
         pid = create(fp, va_arg(ap, int), p->pid);
-        ready(p);
+        to_ready = p;
         p->irc = pid; 
         break;
-      case YIELD: 
-        ready(p);
+      case YIELD:
+        to_ready = p;
         break;
       case STOP:
         cleanup(p);
         break;
       case GET_PID:
         p->irc = p->pid;
-        // kprintf("pid %u wants to get its pid\n", p->pid);
-        ready(p);
+        to_ready = p;
         break;
       case GET_P_PID:
         p->irc = p->parentPid;
-        ready(p);
+        to_ready = p;
         break;
       case PUTS:
         kprintf((char*) va_arg(ap, int));
-        ready(p);
+        to_ready = p;
         break;
       case SEND:
         dest_pid = (unsigned int) va_arg(ap, unsigned int);
@@ -87,7 +86,7 @@ void dispatch(void) {
         receive(p, from_pid);
         break;
       case SYS_TIMER:
-        ready(p);
+        to_ready = p;
         tick();
         end_of_intr();
         break;
@@ -105,15 +104,16 @@ void dispatch(void) {
         new_h = (handler) va_arg(ap, int);
         old_h = (handler*) va_arg(ap, int);
         register_sig_handler(p, sig_no, new_h, old_h);
-        ready(p);
+        to_ready = p;
         break;
       case SIGRETURN:
         // kprintf("pid %u wants to sigreturn\n", p->pid);
         p->esp = (unsigned int) va_arg(ap, int);
+        kprintf("PID %d sigreturn old_sp 0x%x\n", p->pid, p->esp);
         sig_frame = (signal_frame*) (p->esp - sizeof(signal_frame));
         p->hi_sig = sig_frame->old_hi_sig;
         p->irc = sig_frame->old_irc; 
-        ready(p);
+        to_ready = p;
         break;
       case KILL:
         dest_pid = (unsigned int) va_arg(ap, int);
@@ -127,7 +127,7 @@ void dispatch(void) {
         } else {
           p->irc = 0;
         }
-        ready(p);
+        to_ready = p;
         break;
       case SIGWAIT:
         p->state = WAITING;
@@ -136,12 +136,17 @@ void dispatch(void) {
         break;
     }
 
+    if (to_ready) {
+      ready(to_ready);
+    }
+
     // if (request != SYS_TIMER) {
-    //   kprintf("pid %u request %s: ", p->pid, syscall_str[request]);
+    //   kprintf("pid %u sp 0x%x request %s: ", p->pid, p->esp, syscall_str[request]);
     //   print_ready_q();
     // }
 
     p = next();
+
     // Try to not run the idle process if there are others in queue
     if (idle != NULL && p == idle) {
       p = next();
@@ -150,8 +155,9 @@ void dispatch(void) {
       } else {
         ready(idle);
       }
+    } else if (p == NULL) {
+      kprintf("no more proc to run\n");
     }
-
   }
 }
 
@@ -234,6 +240,7 @@ void cleanup(pcb* p) {
   p->stack = NULL;
   p->state = STOPPED;
   pidMapDelete(p->pid);
+  kprintf("cleaned PID %d\n", p->pid);
 }
 
 
