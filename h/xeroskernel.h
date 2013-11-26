@@ -24,7 +24,7 @@ typedef	char		Bool;		/* Boolean type			*/
 typedef enum {
   TIME_INT, CREATE, YIELD, STOP, GET_PID, GET_P_PID, PUTS, SEND, RECV,
   SYS_TIMER, SLEEP, SIGHANDLER, SIGRETURN, KILL, SIGWAIT, OPEN, CLOSE,
-  WRITE, READ, IO_CTL
+  WRITE, READ, IO_CTL, KEYBOARD_IRQ
 } request_type;
 
 // Kernel global defines
@@ -50,7 +50,7 @@ typedef enum {
 #endif
 
 // test toggle
-#define RUNTEST 1
+#define RUNTEST 0
 #define TEST_VERBOSE 1
 
 // max/min

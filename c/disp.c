@@ -6,13 +6,14 @@
 
 /* Your code goes here */
 
+extern long freemem;
+extern void end_of_intr(void);
+extern void enable_irq(unsigned int, int);
 extern int contextswitch(pcb* );
 extern int create (void (*func)(void), int stack, unsigned int parent);
-extern void end_of_intr(void);
-extern long freemem;
+extern void register_sig_handler(pcb* p, int signal, handler, handler*);
 extern void deliver_signal(pcb* p);
 extern int signal(unsigned int pid, int sig_no);
-extern void register_sig_handler(pcb* p, int signal, handler, handler*);
 extern int di_open(pcb* p, int major_no);
 extern int di_close(pcb* p, int fd);
 extern int di_write(pcb* p, void* buf, int buflen);
@@ -42,9 +43,10 @@ void idleproc(void) {
 
 
 void dispatch(void) {
-  int rc, pid, sig_no,fd;
+  unsigned char byte;
   unsigned int dest_pid, *from_pid;
   unsigned long cmd;
+  int rc, pid, sig_no,fd;
   void* buf;
   va_list ap;
   request_type request = SYS_TIMER;
@@ -117,15 +119,11 @@ void dispatch(void) {
         sig_frame = (signal_frame*) (p->esp - sizeof(signal_frame));
         p->hi_sig = sig_frame->old_hi_sig;
         p->irc = sig_frame->old_irc; 
-        // contextFrame *cntx = (contextFrame*) p->esp;
-        // kprintf("PID %d sigreturn old_sp:0x%x, old_eip 0x%x, old_hi_sig:0x%x, old_irc:0x%x\n",
-        //     p->pid, p->esp, cntx->iret_eip, p->hi_sig, p->irc);
         to_ready = p;
         break;
       case KILL:
         dest_pid = (unsigned int) va_arg(ap, int);
         sig_no = va_arg(ap, int);
-        // kprintf("pid %u syskill pid %u\n", p->pid, dest_pid);
         rc = signal(dest_pid, sig_no);
         if (rc == -1) {
           p->irc = -33;
@@ -161,6 +159,17 @@ void dispatch(void) {
         fd = va_arg(ap, int);
         cmd = (unsigned long) va_arg(ap, long);
         di_ioctl(p, fd, cmd, va_arg(ap, va_list));
+        to_ready = p;
+        break;
+      case KEYBOARD_IRQ:
+        byte = inb(0x64);
+        kprintf("KB interruped, port 0x64 reads 0x%x\n", byte);
+        if (byte & 1) {
+          byte = inb(0x60);
+          kprintf("port 0x60 reads 0x%x\n", byte);
+        }
+        // Re-enable keyboard
+        outb(0x64,0xAE);
         to_ready = p;
         break;
       default:

@@ -19,18 +19,23 @@ extern void initPIT( int divisor );
 extern const char* syscall_str[];
 void debugContextFrame(contextFrame*, unsigned int);
 
-/* Declaration of _ISREntryPoint, which enter contextswitch midway */
-void _ISREntryPoint(void);
-void _InterruptEntryPoint(void);
+/* Declaration of _SyscallEntryPoint, which enter contextswitch midway */
+void _SyscallEntryPoint(void);
+void _SystimerISREntryPoint(void);
+void _KeyboardISREntryPoint(void);
 
-/* Setup the IDT to map interrupt SYSCALL to _ISREntryPoint */
+/* Setup the IDT to map interrupt SYSCALL to _SyscallEntryPoint */
 void initSyscall(void) {
-  set_evec(SYSCALL, (unsigned long) _ISREntryPoint);
+  set_evec(SYSCALL, (unsigned long) _SyscallEntryPoint);
 }
 
 void enableTimerInterrupt(void) {
-  set_evec(IRQBASE, (unsigned long) _InterruptEntryPoint);
+  set_evec(IRQBASE, (unsigned long) _SystimerISREntryPoint);
   initPIT(TIME_SLICE_DIV);
+}
+
+void enable_keyboard(void) {
+  set_evec(IRQBASE + 1, (unsigned long) _KeyboardISREntryPoint);
 }
 
 /* 
@@ -55,14 +60,20 @@ extern int contextswitch(pcb* p) {
     "movl %%esp, kStack;\n"
     "movl ESP, %%esp;\n"
     "popa;\n"
+    //"sti;\n"
     "iret;\n"
 
-  "_InterruptEntryPoint:\n"
+  "_KeyboardISREntryPoint:\n"
+    "cli;\n"
+    "pusha;\n"
+    "movl $2, %%ecx;\n"
+    "jmp _CommonJump;\n"
+  "_SystimerISREntryPoint:\n"
     "cli;\n"
     "pusha;\n"
     "movl $1, %%ecx;\n"
     "jmp _CommonJump;\n"
-  "_ISREntryPoint:\n"
+  "_SyscallEntryPoint:\n"
     "cli;\n"
     "pusha;\n"
     "movl $0, %%ecx;\n"
@@ -78,9 +89,12 @@ extern int contextswitch(pcb* p) {
   p->esp = ESP;
   context = (contextFrame*) ESP;
 
-  if (interrupt) {
+  if (interrupt == 1) {
     p->irc = rc;
     return SYS_TIMER;
+  } else if (interrupt == 2) {
+    p->irc = rc;
+    return KEYBOARD_IRQ;
   } else {
     // Put argument pointer in PCB for dispatcher
     p->iargs= context->args[1];

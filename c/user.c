@@ -33,7 +33,7 @@ void consumer(void) {
 
 #define NUM_CHILDREN 4
 void root() {
-  sysputs("root process, does nothing lol\n");
+  sysputs("root process, does nothing\n");
   for(;;);
 }
 

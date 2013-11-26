@@ -13,8 +13,10 @@ extern pcb *idle;
 extern devsw devtab[NUM_DEVICE];
 
 extern void set_evec(unsigned int xnum, unsigned long handler);
+extern void enable_irq(unsigned int, int);
 extern void initSyscall(void);
 extern void enableTimerInterrupt(void);
+extern void enable_keyboard(void);
 extern void init_pcb_table(void);
 extern void dispatch(void);
 extern void kmeminit(void);
@@ -93,6 +95,9 @@ void initproc( void )
   initSyscall();
   // Enable pre-emption
   enableTimerInterrupt();
+  // Enable keyboard
+  enable_keyboard();
+  enable_irq(1,0);
 
   // Create first user process
   pid = create(root, 0x2000, NULL);
