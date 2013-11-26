@@ -3,16 +3,28 @@
 
 devsw devtab[NUM_DEVICE];
 
-void di_open(pcb* p, int device_no) {
+void di_open(pcb* p, int dv_no) {
+  int fd;
+
+  kprintf("PID %d request open device %d\n", p->pid, dv_no);
   // Invalid device number
-  if (device_no < 0 || device_no >= NUM_DEVICE) {
+  if (dv_no < 0 || dv_no >= NUM_DEVICE) {
+    where();
     p->irc = -1;
 
   } else {
-    // Driver accepted open request, update PCB file descriptor table
-    if (devtab[device_no].dvopen(p) == DRV_DONE) {
-      p->opened_dv[device_no] = devtab + device_no;
-      p->irc = device_no;
+    // Look for empty slot in PCB FDT
+    for (fd = 0; fd < NUM_FD; fd++) {
+      if (p->opened_dv[fd] == NULL) {
+        break;
+      }
+    }
+
+    // Process file desciptor table not full and
+    // driver accepted open request, update process FDT
+    if (fd < NUM_FD && devtab[dv_no].dvopen(p) == DRV_DONE) {
+      p->opened_dv[fd] = devtab + dv_no;
+      p->irc = fd;
 
     } else {
       p->irc = -1;
@@ -98,7 +110,7 @@ void di_ioctl(pcb* p, int fd, unsigned long cmd, va_list ap) {
     ready(p);
 
   } else {
-    rc = devtab[fd].dvioctl(cmd, ap);
+    rc = devtab[fd].dvioctl(p, cmd, ap);
     if (rc == DRV_DONE) {
       p->irc = 0;
       ready(p);

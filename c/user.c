@@ -32,14 +32,22 @@ void consumer(void) {
 }
 
 #define NUM_CHILDREN 4
+#define STR_SIZE 0x100
 void root() {
-  int fd;
-  char str[0x100];
+  int fd, bytes;
+  char str[STR_SIZE + 1];
 
-  fd = sysopen(0);
+  sprintf(str, "Root process started, str addr 0x%x\n", (unsigned int) str);
+  sysputs(str);
 
-  sysread(fd, str, 0x100);
-  for(;;);
+  fd = sysopen(1);
+  kprintf("root: sysopen returns %d\n", fd);
+
+  for(;;) {
+    bytes = sysread(fd, str, STR_SIZE);
+    str[bytes] = 0;
+    kprintf("root: sysread returns %d bytes, reads %s", bytes, str);
+  }
 }
 
 void old_root(void) {

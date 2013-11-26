@@ -88,6 +88,11 @@ int create (void (*func)(void), int stack, unsigned int parent) {
       pcb->allowed_sig = 0;
       pcb->hi_sig = 0xFFFFFFFF;
 
+      // Set file descriptor table to NULL
+      for (i = 0; i < NUM_FD; i++) {
+        pcb->opened_dv[i] = NULL;
+      }
+
       // Add to ready queue
       ready(pcb);
       return pcb->pid;

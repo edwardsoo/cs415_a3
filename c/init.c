@@ -18,7 +18,7 @@ extern void set_evec(unsigned int xnum, unsigned long handler);
 extern void enable_irq(unsigned int, int);
 extern void initSyscall(void);
 extern void enableTimerInterrupt(void);
-extern void enable_keyboard(void);
+extern void set_keyboard_ISR(void);
 extern void init_pcb_table(void);
 extern void dispatch(void);
 extern void kmeminit(void);
@@ -91,25 +91,30 @@ void initproc( void )
 
   // Init memory management
   kmeminit();
+
   // Init some PCB stuff
   init_pcb_table();
+
   // Set ISR for syscall interrupt
   initSyscall();
+
   // Enable pre-emption
   enableTimerInterrupt();
-  // Enable keyboard and init device struct
-  enable_keyboard();
-  enable_irq(1,0);
+
+  // Set keyboard ISR and init device struct
+  set_keyboard_ISR();
   devtab[KEYBOARD_0].dvopen = keyboard_open;
   devtab[KEYBOARD_0].dvclose = keyboard_close;
   devtab[KEYBOARD_0].dvread = keyboard_read;
   devtab[KEYBOARD_0].dvwrite = keyboard_write;
   devtab[KEYBOARD_0].dvioctl = keyboard_ioclt;
-  devtab[KEYBOARD_1].dvopen = keyboard_open;
+  devtab[KEYBOARD_1].dvopen = keyboard_open_echo;
   devtab[KEYBOARD_1].dvclose = keyboard_close;
   devtab[KEYBOARD_1].dvread = keyboard_read;
   devtab[KEYBOARD_1].dvwrite = keyboard_write;
   devtab[KEYBOARD_1].dvioctl = keyboard_ioclt;
+  // Disable keyboard interrupt
+  enable_irq(1,1);
 
   // Create first user process
   pid = create(root, 0x2000, NULL);

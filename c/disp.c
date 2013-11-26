@@ -138,29 +138,24 @@ void dispatch(void) {
         break;
       case OPEN:
         di_open(p, va_arg(ap, int));
-        to_ready = p;
         break;
       case CLOSE:
         di_close(p, va_arg(ap, int));
-        to_ready = p;
         break;
       case WRITE:
         fd = va_arg(ap, int);
         buf = (void*) va_arg(ap, int);
         di_write(p, fd, buf, va_arg(ap, int));
-        to_ready = p;
         break;
       case READ:
         fd = va_arg(ap, int);
         buf = (void*) va_arg(ap, int);
         di_read(p, fd, buf, va_arg(ap, int));
-        to_ready = p;
         break;
       case IO_CTL:
         fd = va_arg(ap, int);
         cmd = (unsigned long) va_arg(ap, long);
         di_ioctl(p, fd, cmd, va_arg(ap, va_list));
-        to_ready = p;
         break;
       default:
         break;

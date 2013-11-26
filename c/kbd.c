@@ -8,44 +8,87 @@
 #define DEFAULT_EOF 4
 
 extern void set_evec(unsigned int xnum, unsigned long handler);
+extern void enable_irq(unsigned int, int);
 extern void	kputc(int, unsigned char);
+static void buf_copy(void);
+static int insert(unsigned char c);
+static int remove(unsigned char *c);
+static unsigned int kbtoa( unsigned char code );
+
+// State variables
 static char kb_buf[KEYBOARD_BUF_LEN];
 static int head = 0;
 static int size = 0;
 static __attribute__ ((used)) unsigned int ESP;
 static proc_state ps;
-static void copy(void);
-static int insert(unsigned char c);
-static int remove(unsigned char *c);
-static unsigned int kbtoa( unsigned char code );
 
-void enable_keyboard(void) {
+void set_keyboard_ISR(void) {
   set_evec(IRQBASE + 1, (unsigned long) _KeyboardISREntryPoint);
 }
 
 int keyboard_open(pcb* p) {
+  // Device has already been opened
   if (ps.pcb != NULL) {
     where();
     return DRV_ERROR;
   }
+
+  // set driver state
   ps.pcb = p;
   ps.buf = NULL;
   ps.buf_len = 0;
   ps.ch_read = 0;
   ps.eof = DEFAULT_EOF;
   ps.echo = 0;
-  // TODO: enable keyboard
+
+  // enable keyboard interrupt
+  enable_irq(1,0);
+
+  return DRV_DONE;
+}
+
+int keyboard_open_echo(pcb* p) {
+  // Device has already been opened
+  if (ps.pcb != NULL) {
+    where();
+    return DRV_ERROR;
+  }
+
+  // set driver state
+  ps.pcb = p;
+  ps.buf = NULL;
+  ps.buf_len = 0;
+  ps.ch_read = 0;
+  ps.eof = DEFAULT_EOF;
+  ps.echo = 1;
+
+  // enable keyboard interrupt
+  enable_irq(1,0);
+
   return DRV_DONE;
 }
 
 int keyboard_close(pcb* p) {
+  // reset driver state
   ps.pcb = NULL;
-  // TODO: disable keyboard
+  ps.buf = NULL;
+  ps.buf_len = 0;
+  ps.ch_read = 0;
+  ps.eof = DEFAULT_EOF;
+  ps.echo = 0;
+
+  // disable keyboard interrupt
+  enable_irq(1,1);
+
   return DRV_DONE;
 }
 
-int keyboard_ioclt(pcb* p, unsigned long cmd, va_list ap) {
-  ps.eof = va_arg(ap, int);
+int keyboard_ioclt(pcb* p, unsigned long cmd, ...) {
+  va_list k_ap, p_ap;
+  va_start(k_ap, cmd);
+  p_ap = va_arg(k_ap, va_list);
+  ps.eof = va_arg(p_ap, int);
+  va_end(k_ap);
   return DRV_DONE;
 }
 
@@ -73,19 +116,20 @@ int keyboard_read(pcb* p, void* buf, int buf_len) {
   }
 }
 
-void copy() {
+void buf_copy() {
   unsigned char c, a;
-  int rc;
+  int rc, i;
   
   if (!ps.pcb) {
     // Print chars for testing
     while(remove(&c) == 0) {
-      kputc(0, kbtoa(c));
-      // kprintf("0x%x\n", c);
+      kprintf("KB irq no process, read %c\n", kbtoa(c));
     }
     return;
   }
 
+  // Copy bytes from character buffer to process buffer
+  // Loop until buffer empty or read request met unblock condition
   do {
     rc = remove(&c);
 
@@ -99,20 +143,24 @@ void copy() {
 
     // Reach EOF
     if (a == ps.eof) {
-      ps.pcb->irc = ps.ch_read;
-      ready(ps.pcb);
-      return;
+      goto read_done;
     }
 
-    ps.buf[ps.ch_read] = a;
-    ps.ch_read++;
-    if (a == '\n') {
-      ps.pcb->irc = ps.ch_read;
-      ready(ps.pcb);
-      return;
+    if (a && a != NOCHAR) {
+      ps.buf[ps.ch_read] = a;
+      ps.ch_read++;
+      if (a == '\n') {
+        goto read_done;
+      }
     }
   } while (ps.ch_read < ps.buf_len);
 
+  read_done:
+  if (ps.echo) {
+    for (i = 0; i < ps.ch_read; i++) {
+      kputc(0, ps.buf[i]);
+    }
+  }
   ps.pcb->irc = ps.ch_read;
   ready(ps.pcb);
 }
@@ -132,7 +180,7 @@ void keyboard_lower() {
   }
 
   // Let upper half feed buffer to process
-  copy();
+  buf_copy();
 
   // signal APIC end of interrupt
   outb(ICU1, EOI); 
@@ -155,6 +203,8 @@ void KeyboardISREntryPoint(void) {
   keyboard_lower();
 }
 
+
+// Circular queue insert
 static int insert(unsigned char c) {
   if (size < KEYBOARD_BUF_LEN) {
     kb_buf[(head + size) % KEYBOARD_BUF_LEN] = c;
@@ -163,7 +213,7 @@ static int insert(unsigned char c) {
   }
   return -1;
 }
-
+// Circular queue remove
 static int remove(unsigned char *c) {
   if (size > 0) {
     *c = kb_buf[head++];
@@ -175,34 +225,9 @@ static int remove(unsigned char *c) {
 }
 
 
-
-
 /***********************************
  * Copied from scancodesToAscii.txt 
  ***********************************/
-
-#define KEY_UP   0x80            /* If this bit is on then it is a key   */
-/* up event instead of a key down event */
-
-/* Control code */
-#define LSHIFT  0x2a
-#define RSHIFT  0x36
-#define LMETA   0x38
-
-#define LCTL    0x1d
-#define CAPSL   0x3a
-
-
-/* scan state flags */
-#define INCTL           0x01    /* control key is down          */
-#define INSHIFT         0x02    /* shift key is down            */
-#define CAPSLOCK        0x04    /* caps lock mode               */
-#define INMETA          0x08    /* meta (alt) key is down       */
-#define EXTENDED        0x10    /* in extended character mode   */
-
-#define EXTESC          0xe0    /* extended character escape    */
-#define NOCHAR  256
-
 
 static  int     state; /* the state of the keyboard */
 

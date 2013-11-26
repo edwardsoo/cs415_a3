@@ -52,7 +52,6 @@ typedef enum {
 // test toggle
 #define RUNTEST 0
 #define TEST_VERBOSE 1
-
 // max/min
 #define max(a,b) \
    ({ __typeof__ (a) _a = (a); \
@@ -83,7 +82,7 @@ typedef struct _devsw {
   int (*dvclose)(pcb*);
   int (*dvread)(pcb*, void*, int);
   int (*dvwrite)(pcb*, void*, int);
-  int (*dvioctl)(pcb*, unsigned long, va_list);
+  int (*dvioctl)(pcb*, unsigned long, ...);
 } devsw;
 
 // Driver to DII return codes
