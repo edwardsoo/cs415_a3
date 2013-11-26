@@ -24,7 +24,7 @@ typedef	char		Bool;		/* Boolean type			*/
 typedef enum {
   TIME_INT, CREATE, YIELD, STOP, GET_PID, GET_P_PID, PUTS, SEND, RECV,
   SYS_TIMER, SLEEP, SIGHANDLER, SIGRETURN, KILL, SIGWAIT, OPEN, CLOSE,
-  WRITE, READ, IO_CTL, KEYBOARD_IRQ
+  WRITE, READ, IO_CTL
 } request_type;
 
 // Kernel global defines
@@ -79,7 +79,13 @@ typedef struct _memHeader {
 typedef struct _pcb {
   unsigned int pid; // Process ID
   unsigned int parentPid; // Parent process ID
-  enum {STOPPED = 0, RUNNING, READY, SENDING, RECEIVING, SLEEPING, WAITING} state;
+  enum {
+    STOPPED = 0, RUNNING, READY,
+    /* all normal blocked state */
+    SENDING, RECEIVING, SLEEPING, READING, WRITING,
+    /* waiting is special */
+    WAITING
+  } state;
   struct _pcb *next; // Next process in ready/send queue
   struct _pcb *senders ,*receivers; // Head of queue of senders & receivers
   unsigned int esp;
@@ -91,7 +97,7 @@ typedef struct _pcb {
   unsigned int pending_sig;
   unsigned int allowed_sig;
   unsigned int hi_sig;
-  void* fd[NUM_FD]; // array of file descriptors
+  devsw* opened_dv[NUM_FD]; // array of pointers to opened devices
 } pcb;
 
 typedef void (*funcptr)(void);
@@ -130,6 +136,11 @@ typedef struct _devsw {
   int (*dvwrite)(pcb*, void*, int);
   int (*dvioctl)(pcb*, unsigned long, ...);
 } devsw;
+
+// Driver to DII return codes
+#define OK    0
+#define BLOCK 1
+#define ERROR -1
 
 /* PCB queues struct and functions */
 extern pcb* next(void);

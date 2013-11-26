@@ -61,14 +61,18 @@ int keyboard_read(pcb* p, void* buf, int buf_len) {
     kprintf("Should not happen\n");
     abort();
   }
-  ps.pcb = p;
-  ps.buf = buf;
-  ps.buf_len = buf_len;
-  ps.ch_read = 0;
-
-  // Try to copy unread data
-  copy();
-  return -1;
+  
+  // Process wants to read 1 or more, block process
+  if (buf_len) {
+    ps.buf = buf;
+    ps.buf_len = buf_len;
+    ps.ch_read = 0;
+    p->state = READING;
+  } else {
+    p->irc = 0;
+    ready(p);
+    return 0;
+  }
 }
 
 void copy() {

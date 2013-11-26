@@ -33,7 +33,9 @@ void consumer(void) {
 
 #define NUM_CHILDREN 4
 void root() {
-  sysputs("root process, does nothing\n");
+  int fd;
+
+  fd = sysopen(0);
   for(;;);
 }
 
