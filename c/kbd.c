@@ -26,7 +26,7 @@ void enable_keyboard(void) {
 int keyboard_open(pcb* p) {
   if (ps.pcb != NULL) {
     where();
-    return -1;
+    return DRV_ERROR;
   }
   ps.pcb = p;
   ps.buf = NULL;
@@ -34,26 +34,23 @@ int keyboard_open(pcb* p) {
   ps.ch_read = 0;
   ps.eof = DEFAULT_EOF;
   ps.echo = 0;
-  return 0;
+  // TODO: enable keyboard
+  return DRV_DONE;
 }
 
 int keyboard_close(pcb* p) {
   ps.pcb = NULL;
-  return 0;
+  // TODO: disable keyboard
+  return DRV_DONE;
 }
 
-int keyboard_ioclt(pcb* p, unsigned long cmd, ...) {
-  va_list ap;
-
-  va_start(ap, cmd);
+int keyboard_ioclt(pcb* p, unsigned long cmd, va_list ap) {
   ps.eof = va_arg(ap, int);
-  va_end(ap);
-
-  return 0;
+  return DRV_DONE;
 }
 
 int keyboard_write(pcb* p, void* buf, int buf_len) {
-  return -1;
+  return DRV_ERROR;
 }
 
 int keyboard_read(pcb* p, void* buf, int buf_len) {
@@ -62,16 +59,17 @@ int keyboard_read(pcb* p, void* buf, int buf_len) {
     abort();
   }
   
-  // Process wants to read 1 or more, block process
+  // Process wants to read 1 or more byte, block process
   if (buf_len) {
     ps.buf = buf;
     ps.buf_len = buf_len;
     ps.ch_read = 0;
     p->state = READING;
+    return DRV_BLOCK;
+
   } else {
     p->irc = 0;
-    ready(p);
-    return 0;
+    return DRV_DONE;
   }
 }
 

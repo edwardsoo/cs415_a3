@@ -34,8 +34,11 @@ void consumer(void) {
 #define NUM_CHILDREN 4
 void root() {
   int fd;
+  char str[0x100];
 
   fd = sysopen(0);
+
+  sysread(fd, str, 0x100);
   for(;;);
 }
 

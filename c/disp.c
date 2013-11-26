@@ -16,8 +16,8 @@ extern void deliver_signal(pcb* p);
 extern int signal(unsigned int pid, int sig_no);
 extern void di_open(pcb* p, int major_no);
 extern void di_close(pcb* p, int fd);
-extern void di_write(pcb* p, void* buf, int buflen);
-extern void di_read(pcb* p, void* buf, int buflen);
+extern void di_write(pcb* p, int fd, void* buf, int buflen);
+extern void di_read(pcb* p, int fd, void* buf, int buflen);
 extern void di_ioctl(pcb* p, int fd, unsigned long cmd, va_list ap);
 
 const char* syscall_str[] = {
@@ -45,7 +45,7 @@ void idleproc(void) {
 void dispatch(void) {
   unsigned int dest_pid, *from_pid;
   unsigned long cmd;
-  int rc, pid, sig_no,fd;
+  int rc, pid, sig_no, fd;
   void* buf;
   va_list ap;
   request_type request = SYS_TIMER;
@@ -145,13 +145,15 @@ void dispatch(void) {
         to_ready = p;
         break;
       case WRITE:
+        fd = va_arg(ap, int);
         buf = (void*) va_arg(ap, int);
-        di_write(p, buf, va_arg(ap, int));
+        di_write(p, fd, buf, va_arg(ap, int));
         to_ready = p;
         break;
       case READ:
+        fd = va_arg(ap, int);
         buf = (void*) va_arg(ap, int);
-        di_read(p, buf, va_arg(ap, int));
+        di_read(p, fd, buf, va_arg(ap, int));
         to_ready = p;
         break;
       case IO_CTL:

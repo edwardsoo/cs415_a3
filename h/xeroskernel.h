@@ -75,8 +75,24 @@ typedef struct _memHeader {
   unsigned char dataStart[0];
 } memHeader;
 
+typedef struct _pcb pcb;
+
+// DII
+typedef struct _devsw {
+  int (*dvopen)(pcb*);
+  int (*dvclose)(pcb*);
+  int (*dvread)(pcb*, void*, int);
+  int (*dvwrite)(pcb*, void*, int);
+  int (*dvioctl)(pcb*, unsigned long, va_list);
+} devsw;
+
+// Driver to DII return codes
+#define DRV_DONE   0
+#define DRV_BLOCK  1
+#define DRV_ERROR -1
+
 // Process Control Block
-typedef struct _pcb {
+struct _pcb {
   unsigned int pid; // Process ID
   unsigned int parentPid; // Parent process ID
   enum {
@@ -98,7 +114,7 @@ typedef struct _pcb {
   unsigned int allowed_sig;
   unsigned int hi_sig;
   devsw* opened_dv[NUM_FD]; // array of pointers to opened devices
-} pcb;
+};
 
 typedef void (*funcptr)(void);
 typedef void (*handler)(void*);
@@ -128,19 +144,6 @@ typedef struct _signal_frame {
   unsigned int old_hi_sig;
   unsigned int old_irc;
 } signal_frame;
-
-typedef struct _devsw {
-  int (*dvopen)(pcb*);
-  int (*dvclose)(pcb*);
-  int (*dvread)(pcb*, void*, int);
-  int (*dvwrite)(pcb*, void*, int);
-  int (*dvioctl)(pcb*, unsigned long, ...);
-} devsw;
-
-// Driver to DII return codes
-#define OK    0
-#define BLOCK 1
-#define ERROR -1
 
 /* PCB queues struct and functions */
 extern pcb* next(void);
