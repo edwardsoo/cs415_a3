@@ -8,20 +8,13 @@
 static unsigned int x;
 static inline void debugEsp(void);
 
-
 int syscall(int call, ...) {
   int rc;
   va_list ap;
 
-  va_start(ap, call);
-
-  dprintf("%s(%u) syscall(0x%x)\n", __func__, __LINE__, syscall);
-  dprintf("%s(%u) call(0x%x) = 0x%x\n", __func__, __LINE__, &call, call);
-  dprintf("%s(%u) ptr(0x%x) = 0x%x\n", __func__, __LINE__, &ptr, ptr);
-
-  // debugEsp();
   // Push vargs pointer and REQ_ID, then interrupt
   // When interrupt returns, move EAX value to memory and return it
+  va_start(ap, call);
   __asm __volatile(
       "push %2;\n"
       "push %1;\n"
@@ -90,8 +83,30 @@ int syssigwait() {
   return syscall(SIGWAIT);
 }
 
-int sysopen(int device_no) {
-  return syscall(OPEN, device_no);
+int sysopen(int major_no) {
+  return syscall(OPEN, major_no);
+}
+
+int sysclose(int fd) {
+  return syscall(CLOSE, fd);
+}
+
+int syswrite(int fd, void *buf, int buflen) {
+  return syscall(WRITE, fd, buf, buflen);
+}
+
+int sysread(int fd, void *buf, int buflen) {
+  return syscall(READ, fd, buf, buflen);
+}
+
+int sysioctl(int fd, unsigned long cmd, ...) {
+  va_list ap;
+  int rc;
+
+  va_start(ap, cmd);
+  rc =  syscall(IO_CTL, fd, cmd, ap);
+  va_end(ap);
+  return rc;
 }
 
 // Experimental function to time a context switch by calling 

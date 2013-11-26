@@ -10,6 +10,8 @@ extern  long	freemem; 	/* start of free memory (set in i386.c) */
 extern char	*maxaddr;	/* max memory address (set in i386.c)	*/
 extern pcb pcbTable[MAX_NUM_PROCESS];
 extern pcb *idle;
+extern devsw devtab[NUM_DEVICE];
+
 extern void set_evec(unsigned int xnum, unsigned long handler);
 extern void initSyscall(void);
 extern void enableTimerInterrupt(void);
@@ -58,24 +60,25 @@ void initproc( void )
   initSyscall();
   init_pcb_table();
 
-  // testKmalloc();
-  // kprintf("Passed memory test 1\n");
-  // testFreeList();
-  // kprintf("Passed memory test 2\n");
-  // testContextSwitch();
-  // kprintf("Passed context switch test\n");
-  // testProcessManagement();
-  // kprintf("Passed process management test\n");
-  // testPidMap();
-  // kprintf("Passed PID reuse test\n");
-  // testSendReceive();
-  // kprintf("Passed messaging test\n");
-  // testSleepList();
-  // kprintf("Passed sleep list test\n");
+  testKmalloc();
+  kprintf("Passed memory test 1\n");
+  testFreeList();
+  kprintf("Passed memory test 2\n");
+  testContextSwitch();
+  kprintf("Passed context switch test\n");
+  testProcessManagement();
+  kprintf("Passed process management test\n");
+  testPidMap();
+  kprintf("Passed PID reuse test\n");
+  testSendReceive();
+  kprintf("Passed messaging test\n");
+  testSleepList();
+  kprintf("Passed sleep list test\n");
   
   // Test with pre-emption
   enableTimerInterrupt();
-  // testTimeSharing();
+
+  testTimeSharing();
   kprintf("Passed time sharing test\n");
   test_signal();
   kprintf("Passed signal tests\n");
@@ -1249,6 +1252,11 @@ void test_stack_sigtramp(void) {
   
   rc = syskill(bg_pid, TEST_SIG);
   sprintf(str, "Process %03u exiting\n", me);
+  sysputs(str);
+  
+
+  // Give child processes some time to finish first
+  syssleep(5000);
 }
 
 void test_signal(void) {

@@ -13,14 +13,19 @@ extern long freemem;
 extern void deliver_signal(pcb* p);
 extern int signal(unsigned int pid, int sig_no);
 extern void register_sig_handler(pcb* p, int signal, handler, handler*);
+extern int di_open(pcb* p, int major_no);
+extern int di_close(pcb* p, int fd);
+extern int di_write(pcb* p, void* buf, int buflen);
+extern int di_read(pcb* p, void* buf, int buflen);
+extern int di_ioctl(pcb* p, int fd, unsigned long cmd, va_list ap);
+
 const char* syscall_str[] = {
   "TIME_INT", "CREATE", "YIELD", "STOP", "GET_PID", "GET_P_PID", "PUTS",
   "SEND", "RECV", "SYS_TIMER", "SLEEP", "SIGHANDLER", "SIGRETURN", "KILL",
-  "SIGWAIT", "OPEN"
+  "SIGWAIT", "OPEN", "CLOSE", "WRITE", "READ", "IO_CTL"
 };
 
 void cleanup(pcb* p);
-static open_device(pcb* p, unsigned int major_no);
 
 // Some process management variables
 pcb pcbTable[MAX_NUM_PROCESS];
@@ -37,9 +42,11 @@ void idleproc(void) {
 
 
 void dispatch(void) {
-  int rc, pid, sig_no;
-  va_list ap;
+  int rc, pid, sig_no,fd;
   unsigned int dest_pid, *from_pid;
+  unsigned long cmd;
+  void* buf;
+  va_list ap;
   request_type request = SYS_TIMER;
   pcb *p, *to_ready;
   signal_frame *sig_frame;
@@ -110,7 +117,7 @@ void dispatch(void) {
         sig_frame = (signal_frame*) (p->esp - sizeof(signal_frame));
         p->hi_sig = sig_frame->old_hi_sig;
         p->irc = sig_frame->old_irc; 
-        contextFrame *cntx = (contextFrame*) p->esp;
+        // contextFrame *cntx = (contextFrame*) p->esp;
         // kprintf("PID %d sigreturn old_sp:0x%x, old_eip 0x%x, old_hi_sig:0x%x, old_irc:0x%x\n",
         //     p->pid, p->esp, cntx->iret_eip, p->hi_sig, p->irc);
         to_ready = p;
@@ -133,7 +140,27 @@ void dispatch(void) {
         p->state = WAITING;
         break;
       case OPEN:
-        open_device(p, va_arg(ap, int));
+        di_open(p, va_arg(ap, int));
+        to_ready = p;
+        break;
+      case CLOSE:
+        di_close(p, va_arg(ap, int));
+        to_ready = p;
+        break;
+      case WRITE:
+        buf = (void*) va_arg(ap, int);
+        di_write(p, buf, va_arg(ap, int));
+        to_ready = p;
+        break;
+      case READ:
+        buf = (void*) va_arg(ap, int);
+        di_read(p, buf, va_arg(ap, int));
+        to_ready = p;
+        break;
+      case IO_CTL:
+        fd = va_arg(ap, int);
+        cmd = (unsigned long) va_arg(ap, long);
+        di_ioctl(p, fd, cmd, va_arg(ap, va_list));
         to_ready = p;
         break;
       default:
@@ -240,11 +267,6 @@ void cleanup(pcb* p) {
   p->stack = NULL;
   p->state = STOPPED;
   pidMapDelete(p->pid);
-}
-
-// Device functions
-static open_device(pcb* p, unsigned int major_no) {
-
 }
 
 /******************************************************************************

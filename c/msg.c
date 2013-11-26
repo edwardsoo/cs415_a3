@@ -48,7 +48,7 @@ void send(pcb* p, unsigned int dest_pid) {
     dest_p = pcbTable + dest_pcb_index;
     ap = (va_list) dest_p->iargs;
     src_pid = (unsigned int*) va_arg(ap, int);
-    if (dest_p->state == READING && !(*src_pid)) {
+    if (dest_p->state == RECEIVING && !(*src_pid)) {
       send_receive_transfer(p, dest_p);
       ready(p);
       ready(dest_p);
@@ -105,7 +105,7 @@ void receive(pcb* p, unsigned int *src_pid) {
       ready(src_p);
     } else {
       // Block
-      p->state = READING;
+      p->state = RECEIVING;
     }
   }
 }
@@ -164,7 +164,7 @@ void recv_queue_insert(pcb *p, pcb *receiver) {
     recv_q = &(*recv_q)->next;
   }
   *recv_q = receiver;
-  receiver->state = READING;
+  receiver->state = RECEIVING;
 }
 
 /*

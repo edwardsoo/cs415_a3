@@ -23,7 +23,8 @@ typedef	char		Bool;		/* Boolean type			*/
 // Context switch syscall request types
 typedef enum {
   TIME_INT, CREATE, YIELD, STOP, GET_PID, GET_P_PID, PUTS, SEND, RECV,
-  SYS_TIMER, SLEEP, SIGHANDLER, SIGRETURN, KILL, SIGWAIT, OPEN
+  SYS_TIMER, SLEEP, SIGHANDLER, SIGRETURN, KILL, SIGWAIT, OPEN, CLOSE,
+  WRITE, READ, IO_CTL
 } request_type;
 
 // Kernel global defines
@@ -35,6 +36,10 @@ typedef enum {
 #define SAFETY_MARGIN 0x40
 #define NUM_SIGNAL 32
 #define NUM_FD 4
+#define KEYBOARD_0 0
+#define KEYBOARD_1 KEYBOARD_0 + 1
+#define NUM_DEVICE KEYBOARD_1 + 1
+
 
 // debug print toggle
 #define DEBUG 0
@@ -74,7 +79,7 @@ typedef struct _memHeader {
 typedef struct _pcb {
   unsigned int pid; // Process ID
   unsigned int parentPid; // Parent process ID
-  enum {STOPPED = 0, RUNNING, READY, SENDING, READING, SLEEPING, WAITING} state;
+  enum {STOPPED = 0, RUNNING, READY, SENDING, RECEIVING, SLEEPING, WAITING} state;
   struct _pcb *next; // Next process in ready/send queue
   struct _pcb *senders ,*receivers; // Head of queue of senders & receivers
   unsigned int esp;
@@ -118,21 +123,20 @@ typedef struct _signal_frame {
   unsigned int old_irc;
 } signal_frame;
 
+typedef struct _devsw {
+  int dvnum;
+  int dvminor;
+  char *dvname;
+  int (*dvopen)(void);
+  int (*dvclose)(void);
+  int (*dvread)(void);
+  int (*dvwrite)(void);
+  int (*dvioctl)(void);
+} devsw;
+
 /* PCB queues struct and functions */
 extern pcb* next(void);
 extern void ready(pcb*);
-
-/* ASL tree struct and functions */
-typedef struct _treeNode {
-  unsigned int pid;
-  unsigned int pcbIndex;
-  struct _treeNode *left, *right;
-  unsigned int height;
-} treeNode;
-
-void pidMapInsert(unsigned int pid, unsigned int pcbIndex);
-int pidMapLookup(unsigned int pid, unsigned int *pcbIndex);
-void pidMapDelete(unsigned int pid);
 
 /* Memory functions */
 extern void* kmalloc(int);
@@ -152,6 +156,11 @@ extern void syssigreturn(void *old_sp);
 extern int syssighandler(int signal, handler new_handler, handler* old_handler);
 extern int syskill(unsigned int pid, int signal);
 extern int syssigwait(void);
+extern int sysopen(int device_no);
+extern int sysclose(int fd);
+extern int syswrite(int fd, void *buf, int buflen);
+extern int sysread(int fd, void *buf, int buflen);
+extern int sysioctl(int fd, unsigned long cmd, ...);
 
 /* Messaging */
 #define SYS_SR_NO_PID -1
@@ -166,14 +175,24 @@ extern void receive(pcb* p, unsigned int *from_pid);
 extern void tick(void);
 extern void sleep(pcb*, unsigned int);
 
-/* Signaling */
-
 /* Misc functions */
 extern unsigned long time_int(void);
 extern void root(void);
 extern void semaphore_root(void);
 void inline abort(void);
 extern void print_ready_q(void);
+
+/* ASL tree struct and functions */
+typedef struct _treeNode {
+  unsigned int pid;
+  unsigned int pcbIndex;
+  struct _treeNode *left, *right;
+  unsigned int height;
+} treeNode;
+
+void pidMapInsert(unsigned int pid, unsigned int pcbIndex);
+int pidMapLookup(unsigned int pid, unsigned int *pcbIndex);
+void pidMapDelete(unsigned int pid);
 
 /* Test functions and macro */
 #if TEST_VERBOSE
