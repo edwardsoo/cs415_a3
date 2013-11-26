@@ -5,7 +5,7 @@
 #include <xeroskernel.h>
 #include <stdarg.h>
 
-static  void	kputc(int, unsigned char);
+void	kputc(int, unsigned char);
 
 
 /*------------------------------------------------------------------------
@@ -176,7 +176,7 @@ static void kbmputc( unsigned char c )
  * kputc - do a synchronous kernel write to the console tty
  *------------------------------------------------------------------------
  */
-static void kputc(int dev, unsigned char c)
+void kputc(int dev, unsigned char c)
 {
 	kbmputc(c);
 }

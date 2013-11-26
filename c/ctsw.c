@@ -22,7 +22,6 @@ void debugContextFrame(contextFrame*, unsigned int);
 /* Declaration of _SyscallEntryPoint, which enter contextswitch midway */
 void _SyscallEntryPoint(void);
 void _SystimerISREntryPoint(void);
-void _KeyboardISREntryPoint(void);
 
 /* Setup the IDT to map interrupt SYSCALL to _SyscallEntryPoint */
 void initSyscall(void) {
@@ -34,10 +33,6 @@ void enableTimerInterrupt(void) {
   initPIT(TIME_SLICE_DIV);
 }
 
-void enable_keyboard(void) {
-  set_evec(IRQBASE + 1, (unsigned long) _KeyboardISREntryPoint);
-}
-
 /* 
 * switch context between kernel and a user process
 * @param p - a PCB representing the process which context will switch to
@@ -46,7 +41,6 @@ void enable_keyboard(void) {
 extern int contextswitch(pcb* p) {
   contextFrame *context;
   ESP = p->esp;
-  dprintf("%s(%u): process ESP: 0x%x\n", __func__, __LINE__, ESP);
 
   // Set return value in process context %eax
   context = (contextFrame*) ESP;
@@ -60,14 +54,8 @@ extern int contextswitch(pcb* p) {
     "movl %%esp, kStack;\n"
     "movl ESP, %%esp;\n"
     "popa;\n"
-    //"sti;\n"
     "iret;\n"
 
-  "_KeyboardISREntryPoint:\n"
-    "cli;\n"
-    "pusha;\n"
-    "movl $2, %%ecx;\n"
-    "jmp _CommonJump;\n"
   "_SystimerISREntryPoint:\n"
     "cli;\n"
     "pusha;\n"
@@ -89,12 +77,9 @@ extern int contextswitch(pcb* p) {
   p->esp = ESP;
   context = (contextFrame*) ESP;
 
-  if (interrupt == 1) {
+  if (interrupt) {
     p->irc = rc;
     return SYS_TIMER;
-  } else if (interrupt == 2) {
-    p->irc = rc;
-    return KEYBOARD_IRQ;
   } else {
     // Put argument pointer in PCB for dispatcher
     p->iargs= context->args[1];

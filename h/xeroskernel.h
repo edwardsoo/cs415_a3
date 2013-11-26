@@ -124,14 +124,11 @@ typedef struct _signal_frame {
 } signal_frame;
 
 typedef struct _devsw {
-  int dvnum;
-  int dvminor;
-  char *dvname;
-  int (*dvopen)(void);
-  int (*dvclose)(void);
-  int (*dvread)(void);
-  int (*dvwrite)(void);
-  int (*dvioctl)(void);
+  int (*dvopen)(pcb*);
+  int (*dvclose)(pcb*);
+  int (*dvread)(pcb*, void*, int);
+  int (*dvwrite)(pcb*, void*, int);
+  int (*dvioctl)(pcb*, unsigned long, ...);
 } devsw;
 
 /* PCB queues struct and functions */

@@ -14,11 +14,11 @@ extern int create (void (*func)(void), int stack, unsigned int parent);
 extern void register_sig_handler(pcb* p, int signal, handler, handler*);
 extern void deliver_signal(pcb* p);
 extern int signal(unsigned int pid, int sig_no);
-extern int di_open(pcb* p, int major_no);
-extern int di_close(pcb* p, int fd);
-extern int di_write(pcb* p, void* buf, int buflen);
-extern int di_read(pcb* p, void* buf, int buflen);
-extern int di_ioctl(pcb* p, int fd, unsigned long cmd, va_list ap);
+extern void di_open(pcb* p, int major_no);
+extern void di_close(pcb* p, int fd);
+extern void di_write(pcb* p, void* buf, int buflen);
+extern void di_read(pcb* p, void* buf, int buflen);
+extern void di_ioctl(pcb* p, int fd, unsigned long cmd, va_list ap);
 
 const char* syscall_str[] = {
   "TIME_INT", "CREATE", "YIELD", "STOP", "GET_PID", "GET_P_PID", "PUTS",
@@ -43,7 +43,6 @@ void idleproc(void) {
 
 
 void dispatch(void) {
-  unsigned char byte;
   unsigned int dest_pid, *from_pid;
   unsigned long cmd;
   int rc, pid, sig_no,fd;
@@ -159,17 +158,6 @@ void dispatch(void) {
         fd = va_arg(ap, int);
         cmd = (unsigned long) va_arg(ap, long);
         di_ioctl(p, fd, cmd, va_arg(ap, va_list));
-        to_ready = p;
-        break;
-      case KEYBOARD_IRQ:
-        byte = inb(0x64);
-        kprintf("KB interruped, port 0x64 reads 0x%x\n", byte);
-        if (byte & 1) {
-          byte = inb(0x60);
-          kprintf("port 0x60 reads 0x%x\n", byte);
-        }
-        // Re-enable keyboard
-        outb(0x64,0xAE);
         to_ready = p;
         break;
       default:

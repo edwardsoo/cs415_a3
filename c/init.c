@@ -1,12 +1,14 @@
 /* initialize.c - initproc */
 
 #include <i386.h>
+#include <stdarg.h>
 #include <xeroskernel.h>
 #include <xeroslib.h>
+#include <kbd.h>
 
-extern	int	entry( void );  /* start of kernel image, use &start    */
-extern	int	end( void );    /* end of kernel image, use &end        */
-extern  long	freemem; 	/* start of free memory (set in i386.c) */
+extern int	entry( void );  /* start of kernel image, use &start    */
+extern int	end( void );    /* end of kernel image, use &end        */
+extern long	freemem; 	/* start of free memory (set in i386.c) */
 extern char	*maxaddr;	/* max memory address (set in i386.c)	*/
 extern pcb pcbTable[MAX_NUM_PROCESS];
 extern pcb *idle;
@@ -95,9 +97,19 @@ void initproc( void )
   initSyscall();
   // Enable pre-emption
   enableTimerInterrupt();
-  // Enable keyboard
+  // Enable keyboard and init device struct
   enable_keyboard();
   enable_irq(1,0);
+  devtab[KEYBOARD_0].dvopen = keyboard_open;
+  devtab[KEYBOARD_0].dvclose = keyboard_close;
+  devtab[KEYBOARD_0].dvread = keyboard_read;
+  devtab[KEYBOARD_0].dvwrite = keyboard_write;
+  devtab[KEYBOARD_0].dvioctl = keyboard_ioclt;
+  devtab[KEYBOARD_1].dvopen = keyboard_open;
+  devtab[KEYBOARD_1].dvclose = keyboard_close;
+  devtab[KEYBOARD_1].dvread = keyboard_read;
+  devtab[KEYBOARD_1].dvwrite = keyboard_write;
+  devtab[KEYBOARD_1].dvioctl = keyboard_ioclt;
 
   // Create first user process
   pid = create(root, 0x2000, NULL);
