@@ -23,7 +23,7 @@ typedef	char		Bool;		/* Boolean type			*/
 // Context switch syscall request types
 typedef enum {
   TIME_INT, CREATE, YIELD, STOP, GET_PID, GET_P_PID, PUTS, SEND, RECV,
-  SYS_TIMER, SLEEP, SIGHANDLER, SIGRETURN, KILL, SIGWAIT
+  SYS_TIMER, SLEEP, SIGHANDLER, SIGRETURN, KILL, SIGWAIT, OPEN
 } request_type;
 
 // Kernel global defines
@@ -34,6 +34,7 @@ typedef enum {
 #define FREEMEM_END 0x400000
 #define SAFETY_MARGIN 0x40
 #define NUM_SIGNAL 32
+#define NUM_FD 4
 
 // debug print toggle
 #define DEBUG 0
@@ -85,6 +86,7 @@ typedef struct _pcb {
   unsigned int pending_sig;
   unsigned int allowed_sig;
   unsigned int hi_sig;
+  void* fd[NUM_FD]; // array of file descriptors
 } pcb;
 
 typedef void (*funcptr)(void);

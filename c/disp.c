@@ -16,10 +16,11 @@ extern void register_sig_handler(pcb* p, int signal, handler, handler*);
 const char* syscall_str[] = {
   "TIME_INT", "CREATE", "YIELD", "STOP", "GET_PID", "GET_P_PID", "PUTS",
   "SEND", "RECV", "SYS_TIMER", "SLEEP", "SIGHANDLER", "SIGRETURN", "KILL",
-  "SIGWAIT"
+  "SIGWAIT", "OPEN"
 };
 
 void cleanup(pcb* p);
+static open_device(pcb* p, unsigned int major_no);
 
 // Some process management variables
 pcb pcbTable[MAX_NUM_PROCESS];
@@ -131,6 +132,10 @@ void dispatch(void) {
       case SIGWAIT:
         p->state = WAITING;
         break;
+      case OPEN:
+        open_device(p, va_arg(ap, int));
+        to_ready = p;
+        break;
       default:
         break;
     }
@@ -237,6 +242,10 @@ void cleanup(pcb* p) {
   pidMapDelete(p->pid);
 }
 
+// Device functions
+static open_device(pcb* p, unsigned int major_no) {
+
+}
 
 /******************************************************************************
   AVL tree implementations

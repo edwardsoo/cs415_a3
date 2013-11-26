@@ -90,6 +90,10 @@ int syssigwait() {
   return syscall(SIGWAIT);
 }
 
+int sysopen(int device_no) {
+  return syscall(OPEN, device_no);
+}
+
 // Experimental function to time a context switch by calling 
 // a system call that does not do any work
 unsigned long time_int(void) {
