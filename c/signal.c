@@ -6,6 +6,10 @@ extern unsigned short getCS(void);
 extern void zeroRegisters(contextFrame *context);
 static int msb_1_pos(unsigned int x);
 
+void fake_return(void){
+  sysputs("what the fuck\n");
+}
+
 void register_sig_handler(pcb* p, int signal,
     handler new_handler, handler* old_handler) {
 
@@ -33,9 +37,7 @@ void register_sig_handler(pcb* p, int signal,
 }
 
 void sigtramp(handler handler, void *cntx, void *old_sp) {
-  kprintf("sigtramp calling handler\n");
   handler(cntx);
-  kprintf("sigtramp calling syssigreturn\n");
   syssigreturn(old_sp);
 }
 
@@ -58,17 +60,14 @@ int signal(unsigned int pid, int sig_no) {
     p->pending_sig |= SIG_INT(sig_no);
 
     // syscall blocked
-    if (p->state == READY) {
+    if (p->state == STOPPED) {
+      abort();
     } else if (p->state > READY && p->state < WAITING) {
       ready(p);
       p->irc = -129;
     } else if (p->state == WAITING) {
       ready(p);
       p->irc = sig_no;
-    } else {
-      kprintf("%s %u: Should not reach here, PID %d state %d\n",
-          __func__, __LINE__, p->pid, p->state);
-      for(;;);
     }
   }
   return 0;
@@ -95,14 +94,16 @@ void deliver_signal(pcb* p) {
     new_cntx->eflags = 0x3200;
 
     // Set up sigtramp arguments and values to be stored
-    kprintf("PID %d stored old_sp 0x%x\n", p->pid, p->esp);
     sig_frame = (signal_frame*) new_cntx;
-    sig_frame->ret_addr = (unsigned int) sysstop;
+    sig_frame->ret_addr = (unsigned int) fake_return;
     sig_frame->handler= (unsigned int) p->sig_handler[sig_no];
     sig_frame->cntx = (unsigned int) p->esp;
     sig_frame->old_sp = (unsigned int) p->esp;
     sig_frame->old_hi_sig = (unsigned int) p->hi_sig;
     sig_frame->old_irc = (unsigned int) p->irc;
+
+    // contextFrame *cntx = (contextFrame*) p->esp;
+    // kprintf("PID %d tramp sp 0x%x, eip 0x%x\n", p->pid, p->esp, cntx->iret_eip);
     p->esp = (unsigned int) new_cntx;
 
     // Update signal 

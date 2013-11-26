@@ -1130,31 +1130,39 @@ void test_syssigwait(void) {
 #define SIG_HI 31
 void send_sig_lo(void* cntx) {
   unsigned int me, pid;
+  int rc;
 
   me = sysgetpid();
   char str[0x100];
   sprintf(str, "Process %03d received signal %d, calling sysrecv\n", me, SIG_LO);
   sysputs(str);
-  pid = 0;
-  sysrecv(&pid, NULL, 0);
+  pid = sysgetppid();
+  rc = sysrecv(&pid, NULL, 0);
+  assertEquals(rc, -129);
+  
+  sprintf(str, "Process %03d sending kill signal to self\n", me);
+  sysputs(str);
+  syskill(me, TEST_SIG);
   sprintf(str, "Process %03d signal %d handler returning\n", me, SIG_LO);
   sysputs(str);
 }
 void send_sig_mid(void* cntx) {
   unsigned int me, pid;
+  int rc;
 
   me = sysgetpid();
   char str[0x100];
   sprintf(str, "Process %03d received signal %d, calling sysrecv\n", me, SIG_MID);
   sysputs(str);
-  pid = 0;
-  sysrecv(&pid, NULL, 0);
+  pid = sysgetppid();
+  rc = sysrecv(&pid, NULL, 0);
+  assertEquals(rc, -129);
   sprintf(str, "Process %03d signal %d handler returning\n", me, SIG_MID);
   sysputs(str);
 }
 void send_sig_hi(void* cntx) {
   unsigned int ppid, me;
-  int msg;
+  int msg, rc;
 
   ppid = sysgetppid();
   me = sysgetpid();
@@ -1163,7 +1171,8 @@ void send_sig_hi(void* cntx) {
   sprintf(str, "Process %03d received signal %d, calling syssend to process %03d\n",
       me, SIG_HI, ppid);
   sysputs(str);
-  syssend(ppid, &msg, sizeof(int)); 
+  rc = syssend(ppid, &msg, sizeof(int)); 
+  assertEquals(rc, sizeof(int));
   sprintf(str, "Process %03d signal %d handler returning\n", me, SIG_HI);
   sysputs(str);
 }
@@ -1198,12 +1207,15 @@ void test_stack_sigtramp(void) {
   int rc, msg;
   char str[0x100];
 
+  me = sysgetpid();
+
   // Create idle process to prevent dispatch returning
   bg_pid = syscreate(idle_wait_sig, TEST_STACK_SIZE); 
+  sprintf(str, "Process %03u created idle process %03d\n", me, bg_pid);
+  sysputs(str);
 
   // Create a child process that accepts signals of different priorities
   pid = syscreate(stack_sigtramp, TEST_STACK_SIZE);
-  me = sysgetpid();
   sprintf(str, "Process %03u created process %03d\n", me, pid);
   sysputs(str);
 
@@ -1217,10 +1229,12 @@ void test_stack_sigtramp(void) {
   sysputs(str);
   rc = syskill(pid, SIG_LO);
   assertEquals(rc, 0);
+  syssleep(1000);
   sprintf(str, "Process %03u sending signal %d to process %03d\n", me, SIG_MID, pid);
   sysputs(str);
   rc = syskill(pid, SIG_MID);
   assertEquals(rc, 0);
+  syssleep(1000);
   sprintf(str, "Process %03u sending signal %d to process %03d\n", me, SIG_HI, pid);
   sysputs(str);
   rc = syskill(pid, SIG_HI);
@@ -1234,6 +1248,7 @@ void test_stack_sigtramp(void) {
   sysputs(str);
   
   rc = syskill(bg_pid, TEST_SIG);
+  sprintf(str, "Process %03u exiting\n", me);
 }
 
 void test_signal(void) {

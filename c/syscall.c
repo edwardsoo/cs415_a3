@@ -78,6 +78,8 @@ int syssighandler(int signal, void (*newhandler)(void *), void (** oldHandler)(v
 void syssigreturn(void *old_sp) {
   syscall(SIGRETURN, old_sp);
   // jokes on you, it does not return, haha
+  where();
+  abort();
 }
 
 int syskill(unsigned int pid, int signal) {

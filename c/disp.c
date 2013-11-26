@@ -106,10 +106,12 @@ void dispatch(void) {
         break;
       case SIGRETURN:
         p->esp = (unsigned int) va_arg(ap, int);
-        kprintf("PID %d sigreturn old_sp 0x%x\n", p->pid, p->esp);
         sig_frame = (signal_frame*) (p->esp - sizeof(signal_frame));
         p->hi_sig = sig_frame->old_hi_sig;
         p->irc = sig_frame->old_irc; 
+        contextFrame *cntx = (contextFrame*) p->esp;
+        // kprintf("PID %d sigreturn old_sp:0x%x, old_eip 0x%x, old_hi_sig:0x%x, old_irc:0x%x\n",
+        //     p->pid, p->esp, cntx->iret_eip, p->hi_sig, p->irc);
         to_ready = p;
         break;
       case KILL:
@@ -137,12 +139,6 @@ void dispatch(void) {
       ready(to_ready);
     }
 
-    // if (request != SYS_TIMER) {
-    //   kprintf("PID:%u SP:0x%x state:%d request:%s:\n",
-    //       p->pid, p->esp, p->state, syscall_str[request]);
-    //   // print_ready_q();
-    // }
-
     p = next();
 
     // Try to not run the idle process if there are others in queue
@@ -154,7 +150,7 @@ void dispatch(void) {
         ready(idle);
       }
     } else if (p == NULL) {
-      kprintf("no more proc to run\n");
+      kprintf("Ready queue empty, dispatch() returning\n");
     }
   }
 }
@@ -206,16 +202,16 @@ pcb *next(void) {
   return next;
 }
 
-void ready(pcb* process) {
+void ready(pcb* p) {
   pcb **end;
 
   end = &ready_queue;
   while(*end) {
     end = &((*end)->next);
   }
-  *end = process;
-  process->next = NULL;
-  process->state = READY;
+  *end = p;
+  p->next = NULL;
+  p->state = READY;
 }
 
 void cleanup(pcb* p) {
