@@ -76,8 +76,10 @@ void copy() {
   int rc;
   
   if (!ps.pcb) {
+    // Print chars for testing
     while(remove(&c) == 0) {
       kputc(0, kbtoa(c));
+      // kprintf("0x%x\n", c);
     }
     return;
   }
@@ -249,7 +251,8 @@ unsigned int kbtoa( unsigned char code )
         state &= ~INSHIFT;
         break;
       case CAPSL:
-        state &= ~CAPSLOCK;
+        // state &= ~CAPSLOCK;
+        state = (state & CAPSLOCK) ? (state & ~CAPSLOCK) : (state | CAPSLOCK);
         break;
       case LCTL:
         state &= ~INCTL;
@@ -270,7 +273,7 @@ unsigned int kbtoa( unsigned char code )
       state |= INSHIFT;
       return NOCHAR;
     case CAPSL:
-      state |= CAPSLOCK;
+      // state |= CAPSLOCK;
       return NOCHAR;
     case LCTL:
       state |= INCTL;
