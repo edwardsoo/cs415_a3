@@ -1401,9 +1401,9 @@ void test_syswrite(void) {
 }
 
 void test_sysioctl(void) {
-  int rc, fd;
+  int rc, fd, i;
   unsigned long cmd;
-  char str[TEST_STR_SIZE];
+  char str[TEST_STR_SIZE], *kb_buf_str, buf[TEST_STR_SIZE];
 
   fd = 0;
   cmd = 0xdeadbeef;
@@ -1422,7 +1422,25 @@ void test_sysioctl(void) {
   cmd = 53;
   rc = sysioctl(fd, cmd, '!');
   assertEquals(rc, 0);
-  test_puts(str, "sysioctl fd %d cmd 0x%x returns %d\n", fd, cmd, rc);
+  test_puts(str, "sysioctl fd %d cmd 0x%x new EOF '!' returns %d\n", fd, cmd, rc);
+
+  kb_buf_str = "123!";
+  for (i = 0; i < 4; i++) {
+    rc = test_insert_char(*(kb_buf_str+i));
+    assertEquals(rc, 0);
+  }
+  test_puts(str, "Inserted string \"%s\" into device %d buffer\n",
+      kb_buf_str, KEYBOARD_0);
+
+  rc = sysread(fd, buf, TEST_STR_SIZE);
+  assertEquals(rc, 3);
+  buf[rc] = 0;
+  assert(strcmp(buf, "123") == 0);
+  test_puts(str, "sysread returns %d bytes, read \"%s\"\n", rc, buf);
+
+  rc = sysread(fd, buf, TEST_STR_SIZE);
+  assertEquals(rc, 0);
+  test_puts(str, "next sysread returns %dn", rc);
 
   rc = sysclose(fd);
   assertEquals(rc, 0);
