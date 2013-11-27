@@ -1492,37 +1492,43 @@ void test_blocking_sysread(void) {
 }
 
 void test_sysread_eof(void) {
-  // int rc, fd, i;
-  // unsigned int me;
-  // char str[TEST_STR_SIZE];
-  // char buf[TEST_STR_SIZE + 1];
-  // char kb_buf_str[] = {97, 98, 99, 4, 0};
-  // 
-  // me = sysgetpid();
-  // test_puts(str, "Process %03d started\n", me);
+  int rc, fd, i;
+  unsigned int me;
+  char str[TEST_STR_SIZE];
+  char buf[TEST_STR_SIZE + 1];
+  char kb_buf_str[] = {97, 98, 99, 4, 0};
+  
+  me = sysgetpid();
+  test_puts(str, "Process %03d started\n", me);
 
-  // fd = sysopen(KEYBOARD_0);
-  // assertEquals(fd, 0);
-  // test_puts(str, "Process %03d opened device %d, got fd %d\n",
-  //     me, KEYBOARD_0, fd);
+  fd = sysopen(KEYBOARD_0);
+  assertEquals(fd, 0);
+  test_puts(str, "Process %03d opened device %d, got fd %d\n",
+      me, KEYBOARD_0, fd);
 
-  // for (i = 0; i < 4; i++) {
-  //   rc = test_insert_char(*(kb_buf_str+i));
-  //   assertEquals(rc, 0);
-  // }
-  // test_puts(str, 
-  //     "Inserted string \"%s\" (ends with EOF char) into device %d buffer\n",
-  //     kb_buf_str, KEYBOARD_0);
+  for (i = 0; i < 4; i++) {
+    rc = test_insert_char(*(kb_buf_str+i));
+    assertEquals(rc, 0);
+  }
+  test_puts(str, 
+      "Inserted string \"%s\" (ends with EOF char) into device %d buffer\n",
+      kb_buf_str, KEYBOARD_0);
 
-  // test_puts(str, "Process %03d calling sysread fd %d len 0x%x\n",
-  //     me, fd, TEST_STR_SIZE);
-  // rc = sysread(fd, buf, TEST_STR_SIZE);
-  // assertEquals(rc, 3);
-  // buf[rc] = 0;
-  // assert(strcmp(buf, "abc") == 0);
-  // test_puts(str, "sysread returns %d bytes, read \"%s\"\n", rc, buf);
-  // 
-  // test_puts(str, "Process %03d exiting\n", me);
+  test_puts(str, "Process %03d calling sysread fd %d len 0x%x\n",
+      me, fd, TEST_STR_SIZE);
+  rc = sysread(fd, buf, TEST_STR_SIZE);
+  assertEquals(rc, 3);
+  buf[rc] = 0;
+  assert(strcmp(buf, "abc") == 0);
+  test_puts(str, "sysread returns %d bytes, read \"%s\"\n", rc, buf);
+
+  test_puts(str, "Process %03d calling sysread fd %d len 0x%x again\n",
+      me, fd, TEST_STR_SIZE);
+  rc = sysread(fd, buf, TEST_STR_SIZE);
+  assertEquals(rc, 0);
+  test_puts(str, "sysread returns %d bytes\n", rc);
+  
+  test_puts(str, "Process %03d exiting\n", me);
 }
 
 void test_device() {

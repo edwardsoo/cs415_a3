@@ -108,7 +108,7 @@ int keyboard_read(pcb* p, void* buf, int buf_len) {
   
   // Process wants to read, EOF not reached 
   // but kernel buffer size is less than request length
-  if (!(ps.status & EOF_REACHED) && size < buf_len) {
+  if (!(ps.status & EOF_IN_BUF) && size < buf_len) {
     ps.buf = buf;
     ps.buf_len = buf_len;
     ps.ch_read = 0;
@@ -116,13 +116,19 @@ int keyboard_read(pcb* p, void* buf, int buf_len) {
     return DRV_BLOCK;
 
   // Buffer has more characters than the request length
-  } else if (size >= buf_len) {
+  } else if (size >= buf_len || ps.status & EOF_IN_BUF) {
     ps.buf = buf;
     ps.buf_len = buf_len;
     ps.ch_read = 0;
 
-    if (buf_copy() == DRV_DONE) {
+    // This FD has returned EOF at least once since open
+    if (ps.status & EOF_REACHED) {
+      p->irc = 0;
       return DRV_DONE;
+
+    } else if (buf_copy() == DRV_DONE) {
+      return DRV_DONE;
+
     } else {
       where();
       abort();
@@ -227,9 +233,9 @@ static int insert_char(unsigned char c) {
   if (size < KEYBOARD_BUF_LEN) {
     kb_buf[(head + size) % KEYBOARD_BUF_LEN] = c;
     size++;
-    // if (c == ps.eof) {
-    //   ps.status |= EOF_REACHED;
-    // }
+    if (c == ps.eof) {
+      ps.status |= EOF_IN_BUF;
+    }
     return 0;
   }
   return -1;
