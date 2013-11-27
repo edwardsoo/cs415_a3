@@ -1440,7 +1440,7 @@ void test_sysioctl(void) {
 
   rc = sysread(fd, buf, TEST_STR_SIZE);
   assertEquals(rc, 0);
-  test_puts(str, "next sysread returns %dn", rc);
+  test_puts(str, "next sysread returns %d\n", rc);
 
   rc = sysclose(fd);
   assertEquals(rc, 0);
@@ -1494,11 +1494,11 @@ void test_blocking_sysread(void) {
       me, KEYBOARD_0, fd);
 
   test_puts(str, "Process %03d calling sysread fd %d, len 0x%x\n",
-      me, fd, TEST_STACK_SIZE);
+      me, fd, TEST_STR_SIZE);
   test_puts(str, 
       "Enter something and hit the return key to unblock Process %03d:\n",
       me);
-  rc = sysread(fd, buf, TEST_STACK_SIZE);
+  rc = sysread(fd, buf, TEST_STR_SIZE);
   assert(rc >= 0);
   buf[rc] = 0;
 
