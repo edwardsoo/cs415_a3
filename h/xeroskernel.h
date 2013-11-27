@@ -56,7 +56,7 @@ typedef	char		Bool;		/* Boolean type			*/
 #endif
 
 // test toggle
-#define RUNTEST 1
+#define RUNTEST 0
 #define TEST_VERBOSE 1
 
 // max/min

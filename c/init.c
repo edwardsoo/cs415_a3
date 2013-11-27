@@ -28,11 +28,11 @@ extern void idleproc(void);
 extern pcb *ready_queue;
 extern pcb *sleep_list;
 
-static void run_test(void);
 static void init_keyboard(void);
 
 /* Test functions */
 #if RUNTEST
+static void run_test(void);
 static void testFreeList(void);
 static void testKmalloc(void);
 static void testContextSwitch(void);
