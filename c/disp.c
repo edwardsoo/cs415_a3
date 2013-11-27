@@ -143,6 +143,7 @@ void dispatch(void) {
         break;
       case CLOSE:
         di_close(p, va_arg(ap, int));
+        to_ready = p;
         break;
       case WRITE:
         fd = va_arg(ap, int);

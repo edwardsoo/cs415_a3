@@ -42,6 +42,7 @@ static void testSendReceive(void);
 static void testTimeSharing(void);
 static void testSleepList(void);
 static void test_signal(void);
+static void test_device(void);
 
 void run_test() {
   // Test without pre-emption
@@ -76,6 +77,8 @@ void run_test() {
 
   // Test with keyboard enabled
   init_keyboard();
+  test_device();
+  kprintf("Passed device tests\n");
 
   kprintf("Passed all tests\n");
 }
@@ -951,13 +954,16 @@ void test_syssighandler(void) {
 
   rc = syssighandler(-1, NULL, NULL);
   assertEquals(rc, -1);
+  test_print("syssighandler with signal -1 returns -1\n");
 
   rc = syssighandler(32, NULL, NULL);
   assertEquals(rc, -1);
+  test_print("syssighandler with signal 32 returns -1\n");
 
   rc = syssighandler(0, handler_exit, &old);
   assertEquals(rc, 0);
   assertEquals(old, NULL);
+  test_print("syssighandler with signal 0 returns 0 and old_handler NULL\n");
 
   rc = syssighandler(31, handler_exit, &old);
   assertEquals(rc, 0);
@@ -967,13 +973,16 @@ void test_syssighandler(void) {
   rc = syssighandler(TEST_SIG, (handler) ptr, &old);
   kfree(ptr);
   assertEquals(rc, -2);
+  test_print("syssighandler with invalid handler returns -2\n");
 
   rc = syssighandler(TEST_SIG, handler_exit, &old);
   assertEquals(rc, 0);
+  test_print("syssighandler with valid signal and handler returns 0\n");
 
   rc = syssighandler(TEST_SIG, NULL, &old);
   assertEquals(rc, 0);
   assertEquals(old, handler_exit);
+  test_print("syssighandler with same valid signal return 0 and correct old_handler\n");
 }
 
 void idle_wait_sig(void) {
@@ -1270,12 +1279,52 @@ void test_signal(void) {
   dispatch();
 
   // Test stacking sigtramp
-  test_print("Tests for stacking sigtramp:\n");
+  test_print("Tests for signal prioritization:\n");
   create(test_stack_sigtramp, TEST_STACK_SIZE, NULL);
   dispatch();
 }
 
+void test_sysopen(void) {
+  int rc, fd;
+  char str[0x100];
+
+  rc = sysopen(-1);
+  assertEquals(rc, -1);
+  test_print("sysopen -1 returns -1\n");
+
+  rc = sysopen(NUM_DEVICE);
+  assertEquals(rc, -1);
+  test_puts(str, "sysopen %d returns %d\n", NUM_DEVICE, rc);
+
+  fd = sysopen(KEYBOARD_0);
+  assertEquals(fd, 0);
+  test_puts(str, "sysopen %d returns %d\n", KEYBOARD_0, fd);
+
+  rc = sysopen(KEYBOARD_0);
+  assertEquals(rc, -1);
+  test_puts(str, "sysopen %d again returns %d\n", KEYBOARD_0, rc);
+
+  rc = sysopen(KEYBOARD_1);
+  assertEquals(rc, -1);
+  test_puts(str, "sysopen %d returns %d\n", KEYBOARD_1, rc);
+
+  rc = sysclose(fd);
+  assertEquals(rc, 0);
+  test_puts(str, "closed fd %d\n", fd);
+
+  fd = sysopen(KEYBOARD_1);
+  assertEquals(rc, 0);
+  test_puts(str, "sysopen %d returns %d\n", KEYBOARD_1, fd);
+  
+  rc = sysclose(fd);
+  assertEquals(rc, 0);
+  test_puts(str, "closed fd %d\n", fd);
+}
+
 void test_device(void) {
+  test_print("Tests for sysopen:\n");
+  create(test_sysopen, TEST_STACK_SIZE, NULL);
+  dispatch();
 }
 
 /* END OF TEST CODE*/

@@ -41,7 +41,7 @@ int di_close(pcb* p, int fd) {
 
   } else {
     // Drive closed device for process
-    if (devtab[fd].dvclose(p) == DRV_DONE) {
+    if (p->opened_dv[fd]->dvclose(p) == DRV_DONE) {
       p->opened_dv[fd] = NULL;
       p->irc = 0;
       return DRV_DONE;
