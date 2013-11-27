@@ -61,7 +61,6 @@ int create (void (*func)(void), int stack, unsigned int parent) {
       // Find the next currently unused PID
       pcb->pid = getNextPid();
       pcb->parentPid = parent;
-      pcb->next = NULL;
       pcb->stack = (void*) ptr;
       
       // Update PID in the PCB map
@@ -80,13 +79,22 @@ int create (void (*func)(void), int stack, unsigned int parent) {
       // Setup stack so process calls sysstop when run out of code
       context->args[0] = (unsigned int) sysstop;
 
-      // Disable all signals
+      // Reset PCB
+      pcb->next = NULL;
+      pcb->senders = NULL;
+      pcb->receivers = NULL;
       for (i = 0; i < NUM_SIGNAL; i++) {
         pcb->sig_handler[i] = NULL;
       }
       pcb->pending_sig = 0;
       pcb->allowed_sig = 0;
       pcb->hi_sig = 0xFFFFFFFF;
+      pcb->delta = 0;
+      pcb->iargs = 0;
+      pcb->irc = 0;
+      for(i = 0; i < NUM_FD; i++) {
+        pcb->opened_dv[i] = NULL;
+      }
 
       // Set file descriptor table to NULL
       for (i = 0; i < NUM_FD; i++) {

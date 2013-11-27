@@ -227,6 +227,9 @@ static int insert_char(unsigned char c) {
   if (size < KEYBOARD_BUF_LEN) {
     kb_buf[(head + size) % KEYBOARD_BUF_LEN] = c;
     size++;
+    // if (c == ps.eof) {
+    //   ps.status |= EOF_REACHED;
+    // }
     return 0;
   }
   return -1;

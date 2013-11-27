@@ -76,6 +76,9 @@ void run_test() {
 
 
   // Test with keyboard enabled
+  kmeminit();
+  init_pcb_table();
+  initSyscall();
   init_keyboard();
   test_device();
   kprintf("Passed device tests\n");
@@ -990,8 +993,11 @@ void test_syssighandler(void) {
 }
 
 void idle_wait_sig(void) {
-  syssighandler(TEST_SIG, handler_exit, NULL);
-  for(;;);
+  int rc;
+  rc = syssighandler(TEST_SIG, handler_exit, NULL);
+  assertEquals(rc, 0);
+  for(;;) {
+  }
 }
 
 // This function registers a signal handler and loops waiting to be stopped
@@ -1040,7 +1046,7 @@ void interrupted_by_sig(void) {
   test_puts(str, "Process %03u returns from sysrecv\n", me);
 }
 
-void test_syssigkill(void) {
+void test_syskill(void) {
   int rc, msg;
   unsigned int pid, me, bg_pid;
   char str[TEST_STR_SIZE];
@@ -1269,9 +1275,9 @@ void test_signal(void) {
   create(test_syssighandler, TEST_STACK_SIZE, NULL);
   dispatch();
 
-  // Test syssigkill
-  test_print("Tests for syssigkill:\n");
-  create(test_syssigkill, TEST_STACK_SIZE, NULL);
+  // Test syskill
+  test_print("Tests for syskill:\n");
+  create(test_syskill, TEST_STACK_SIZE, NULL);
   dispatch();
 
   // Test syssigwait
@@ -1425,35 +1431,98 @@ void test_sysioctl(void) {
 
 #define TEST_STRING "abcd"
 #define SHORT_BUF_SIZE 2
-void test_blocking_sysread(void) {
-  int rc, fd;
+void test_nonblocking_sysread(void) {
+  int rc, fd, i;
   char str[TEST_STR_SIZE], buf[SHORT_BUF_SIZE + 1];
 
   fd = sysopen(KEYBOARD_0);
   assertEquals(fd, 0);
   test_puts(str, "Opened device %d, got fd %d\n", KEYBOARD_0, fd);
 
-  rc = test_insert_char(*TEST_STRING);
-  assertEquals(rc, 0);
-  rc = test_insert_char(*(TEST_STRING+1));
-  assertEquals(rc, 0);
-  rc = test_insert_char(*(TEST_STRING+2));
-  assertEquals(rc, 0);
-  rc = test_insert_char(*(TEST_STRING+3));
-  assertEquals(rc, 0);
+  for (i = 0; i < sizeof(TEST_STRING)/sizeof(char) - 1; i++) {
+    rc = test_insert_char(*(TEST_STRING+i));
+    assertEquals(rc, 0);
+  }
   test_puts(str, "Inserted string \"%s\" into device %d buffer\n",
-    TEST_STRING, KEYBOARD_0);
+      TEST_STRING, KEYBOARD_0);
 
   rc = sysread(fd, buf, SHORT_BUF_SIZE);
   assertEquals(rc, SHORT_BUF_SIZE);
   buf[rc] = 0;
   assert(strcmp(buf, "ab") == 0);
   test_puts(str, "sysread fd %d returns %d bytes, read '%s'\n",
-    fd, rc, "ab");
-  
+      fd, rc, "ab");
+
   rc = sysclose(fd);
   assertEquals(rc, 0);
   test_puts(str, "Closed fd %d\n", fd);
+}
+
+void test_blocking_sysread(void) {
+  int rc, fd;
+  unsigned int bg_pid, me;
+  char str[TEST_STR_SIZE];
+  char buf[TEST_STR_SIZE + 1];
+
+  me = sysgetpid();
+  test_puts(str, "Process %03d started\n", me);
+
+  bg_pid = syscreate(idle_wait_sig, TEST_STACK_SIZE);
+  test_puts(str, "Process %03d created idle process %03d\n", me, bg_pid);
+
+  fd = sysopen(KEYBOARD_1);
+  assertEquals(fd, 0);
+  test_puts(str, "Process %03d opened device %d, got fd %d\n",
+      me, KEYBOARD_0, fd);
+
+  test_puts(str, "Process %03d calling sysread fd %d, len 0x%x\n",
+      me, fd, TEST_STACK_SIZE);
+  test_puts(str, 
+      "Enter something and hit the return key to unblock Process %03d:\n",
+      me);
+  rc = sysread(fd, buf, TEST_STACK_SIZE);
+  assert(rc >= 0);
+  buf[rc] = 0;
+
+  test_puts(str, "You entered: %s", buf);
+
+  test_puts(str, "Process %03d killing process %03d and exiting\n",
+      me, bg_pid);
+  syskill(bg_pid, TEST_SIG);
+}
+
+void test_sysread_eof(void) {
+  // int rc, fd, i;
+  // unsigned int me;
+  // char str[TEST_STR_SIZE];
+  // char buf[TEST_STR_SIZE + 1];
+  // char kb_buf_str[] = {97, 98, 99, 4, 0};
+  // 
+  // me = sysgetpid();
+  // test_puts(str, "Process %03d started\n", me);
+
+  // fd = sysopen(KEYBOARD_0);
+  // assertEquals(fd, 0);
+  // test_puts(str, "Process %03d opened device %d, got fd %d\n",
+  //     me, KEYBOARD_0, fd);
+
+  // for (i = 0; i < 4; i++) {
+  //   rc = test_insert_char(*(kb_buf_str+i));
+  //   assertEquals(rc, 0);
+  // }
+  // test_puts(str, 
+  //     "Inserted string \"%s\" (ends with EOF char) into device %d buffer\n",
+  //     kb_buf_str, KEYBOARD_0);
+
+  // test_puts(str, "Process %03d calling sysread fd %d len 0x%x\n",
+  //     me, fd, TEST_STR_SIZE);
+  // rc = sysread(fd, buf, TEST_STR_SIZE);
+  // assertEquals(rc, 3);
+  // buf[rc] = 0;
+  // assert(strcmp(buf, "abc") == 0);
+  // test_puts(str, "sysread returns %d bytes, read \"%s\"\n", rc, buf);
+  // 
+  // test_puts(str, "Process %03d exiting\n", me);
 }
 
 void test_device() {
@@ -1473,8 +1542,16 @@ void test_device() {
   create(test_sysioctl, TEST_STACK_SIZE, NULL);
   dispatch();
 
-  test_print("Tests for nonblocking sysread:\n");
+  test_print("Test for nonblocking sysread:\n");
+  create(test_nonblocking_sysread, TEST_STACK_SIZE, NULL);
+  dispatch();
+
+  test_print("Test for blocking sysread:\n");
   create(test_blocking_sysread, TEST_STACK_SIZE, NULL);
+  dispatch();
+
+  test_print("Test read reaching EOF:\n");
+  create(test_sysread_eof, TEST_STACK_SIZE, NULL);
   dispatch();
 }
 
