@@ -166,8 +166,7 @@ int buf_copy() {
       goto read_done;
     }
 
-    ps.buf[ps.ch_read] = a;
-    ps.ch_read++;
+    ps.buf[ps.ch_read++] = a;
     if (a == '\n') {
       goto read_done;
     }
@@ -185,8 +184,8 @@ void keyboard_lower() {
 
   rc = 0;
   byte = inb(0x64);
-  // Read from keyboard controller while its buffer is not empty and 
-  // the kernel buffer is not full
+  // Read from keyboard controller to driver buffer
+  // stop when controller buffer empty or the driver buffer is full
   while (byte & 1 && rc == 0) {
     byte = inb(0x60);
     // Scan code to ASCII
@@ -201,8 +200,8 @@ void keyboard_lower() {
     byte = inb(0x64);
   }
 
-  // Let upper half feed buffer to process
-  if (buf_copy() == DRV_DONE) {
+  // If process still reading, let upper half feed chars to process
+  if (ps.ch_read < ps.buf_len && buf_copy() == DRV_DONE) {
     ready(ps.pcb);
   }
 
