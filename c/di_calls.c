@@ -35,7 +35,7 @@ int di_open(pcb* p, int dv_no) {
 
 int di_close(pcb* p, int fd) {
   // Invalid device number or device not opened by process
-  if (fd < 0 || fd >= NUM_DEVICE || p->opened_dv[fd] == NULL) {
+  if (fd < 0 || fd >= NUM_FD || p->opened_dv[fd] == NULL) {
     p->irc = -1;
     return DRV_ERROR;
 

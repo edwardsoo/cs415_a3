@@ -169,6 +169,18 @@ void inline abort() {
 #define EBX_TEST_VALUE 0xbbbb
 #define TEST_IRET_VALUE 0xdeadbeef
 #define TEST_STACK_SIZE 0x8000
+#define TEST_STR_SIZE 0x100
+#define SEND_BUFFER_SIZE 0x200
+#define RECV_BUFFER_SIZE 0x100
+#define TEST_MSG "Yo mama so fat, Obi-Wan Kenobi said "\
+  "\"Thats no moon.... thats yo mama!\""
+#define NUM_SENDERS 3
+#define NUM_RECEIVERS 3
+#define NUM_SLEEP_P 6
+#define TEST_SIG 20
+#define SIG_LO 0
+#define SIG_MID 16
+#define SIG_HI 31
 
 extern memHeader *freeList;
 extern  long  freemem;
@@ -549,10 +561,6 @@ void testPidMap(void) {
   assertEquals(pidMap, NULL);
 }
 
-#define SEND_BUFFER_SIZE 0x200
-#define RECV_BUFFER_SIZE 0x100
-#define TEST_MSG "Yo mama so fat, Obi-Wan Kenobi said \"Thats no moon.... thats yo mama!\""
-
 void test_send_recv_fail(void) {
   char buffer[RECV_BUFFER_SIZE];
   unsigned int from_pid, bad_pid;
@@ -655,7 +663,6 @@ void sender_2(void) {
   test_print("Process %03u: syssend returns %d\n", pid, num);
 }
 
-#define NUM_SENDERS 3
 void sender_3(void) {
   unsigned int pid, ppid;
 
@@ -722,7 +729,6 @@ void receiver_4(void) {
   test_print("Process %03u received word %u from Process %03u\n", pid, word, ppid);
 }
 
-#define NUM_RECEIVERS 3
 void sender_4(void) {
   int i, num;
   unsigned int pid, dest_pid, word;
@@ -793,7 +799,6 @@ void testSendReceive(void) {
   nextPid = 0;
 }
 
-#define NUM_SLEEP_P 6
 void testSleepList(void) {
   pcb process[NUM_SLEEP_P], *p;
   int i;
@@ -851,10 +856,9 @@ void testSleepList(void) {
 
 static Bool preempted, awake;
 static unsigned int ticks;
-
 void preemptive(void) {
   unsigned int pid = sysgetpid();
-  char str[0x100];
+  char str[TEST_STR_SIZE];
 
   // let other process enter while loop
   sysyield();
@@ -867,7 +871,7 @@ void preemptive(void) {
 
 void gets_preempted(void) {
   unsigned int pid = sysgetpid();
-  char str[0x100];
+  char str[TEST_STR_SIZE];
 
   syscreate(preemptive, TEST_STACK_SIZE);
 
@@ -883,7 +887,7 @@ void gets_preempted(void) {
 }
 
 void idling(void) {
-  char str[0x100];
+  char str[TEST_STR_SIZE];
 
   sprintf(str, "Idling process gets to run\n", 0);
 
@@ -896,7 +900,7 @@ void idling(void) {
 
 void sleeping(void) {
   unsigned int pid, ms;
-  char str[0x100];
+  char str[TEST_STR_SIZE];
 
   ms = 1000;
   pid = sysgetpid();
@@ -934,19 +938,18 @@ void testTimeSharing(void) {
 }
 
 void handler_exit(void *cntx) {
-  char str[0x100];
+  char str[TEST_STR_SIZE];
   unsigned int me = sysgetpid();
   test_puts(str, "Process %03u received signal, calling sysstop now\n", me);
   sysstop();
 }
 
 void handler_nothing(void *cntx) {
-  char str[0x100];
+  char str[TEST_STR_SIZE];
   unsigned int me = sysgetpid();
   test_puts(str, "Process %03u received signal, does nothing\n", me);
 }
 
-#define TEST_SIG 20
 void test_syssighandler(void) {
   int rc;
   void* ptr;
@@ -994,7 +997,7 @@ void idle_wait_sig(void) {
 void loop_wait_sig(void) {
   unsigned int me, ppid;
   int rc;
-  char str[0x100];
+  char str[TEST_STR_SIZE];
 
   me = sysgetpid();
   ppid = sysgetppid();
@@ -1017,7 +1020,7 @@ void loop_wait_sig(void) {
 void interrupted_by_sig(void) {
   unsigned int ppid, me;
   int rc;
-  char str[0x100];
+  char str[TEST_STR_SIZE];
 
   me = sysgetpid();
   ppid = sysgetppid();
@@ -1039,7 +1042,7 @@ void interrupted_by_sig(void) {
 void test_syssigkill(void) {
   int rc, msg;
   unsigned int pid, me, bg_pid;
-  char str[0x100];
+  char str[TEST_STR_SIZE];
 
   // Create an idle process to prevent dispatch returning
   bg_pid = syscreate(idle_wait_sig, TEST_STACK_SIZE);
@@ -1096,7 +1099,7 @@ void test_syssigkill(void) {
 void blocked_wait_sig(void) {
   unsigned int me, ppid;
   int rc;
-  char str[0x100];
+  char str[TEST_STR_SIZE];
 
   me = sysgetpid();
   ppid = sysgetppid();
@@ -1120,7 +1123,7 @@ void blocked_wait_sig(void) {
 void test_syssigwait(void) {
   int rc, msg;
   unsigned int pid, me, bg_pid;
-  char str[0x100];
+  char str[TEST_STR_SIZE];
 
   // Create idle process to prevent dispatch returning
   bg_pid = syscreate(idle_wait_sig, TEST_STACK_SIZE); 
@@ -1146,15 +1149,12 @@ void test_syssigwait(void) {
   sysstop();
 }
 
-#define SIG_LO 0
-#define SIG_MID 16
-#define SIG_HI 31
 void send_sig_lo(void* cntx) {
   unsigned int me, pid;
   int rc;
 
   me = sysgetpid();
-  char str[0x100];
+  char str[TEST_STR_SIZE];
   test_puts(str, "Process %03d received signal %d, calling sysrecv\n", me, SIG_LO);
   pid = sysgetppid();
   rc = sysrecv(&pid, NULL, 0);
@@ -1169,7 +1169,7 @@ void send_sig_mid(void* cntx) {
   int rc;
 
   me = sysgetpid();
-  char str[0x100];
+  char str[TEST_STR_SIZE];
   test_puts(str, "Process %03d received signal %d, calling sysrecv\n", me, SIG_MID);
   pid = sysgetppid();
   rc = sysrecv(&pid, NULL, 0);
@@ -1183,7 +1183,7 @@ void send_sig_hi(void* cntx) {
   ppid = sysgetppid();
   me = sysgetpid();
   msg = SIG_HI;
-  char str[0x100];
+  char str[TEST_STR_SIZE];
   test_puts(str, "Process %03d received signal %d, calling syssend to process %03d\n",
       me, SIG_HI, ppid);
   rc = syssend(ppid, &msg, sizeof(int)); 
@@ -1194,7 +1194,7 @@ void send_sig_hi(void* cntx) {
 void stack_sigtramp(void) {
   int rc;
   unsigned int me, ppid;
-  char str[0x100];
+  char str[TEST_STR_SIZE];
 
   me = sysgetpid();
   ppid = sysgetppid();
@@ -1218,7 +1218,7 @@ void stack_sigtramp(void) {
 void test_stack_sigtramp(void) {
   unsigned int pid, me, bg_pid;
   int rc, msg;
-  char str[0x100];
+  char str[TEST_STR_SIZE];
 
   me = sysgetpid();
 
@@ -1286,7 +1286,7 @@ void test_signal(void) {
 
 void test_sysopen(void) {
   int rc, fd;
-  char str[0x100];
+  char str[TEST_STR_SIZE];
 
   rc = sysopen(-1);
   assertEquals(rc, -1);
@@ -1310,7 +1310,7 @@ void test_sysopen(void) {
 
   rc = sysclose(fd);
   assertEquals(rc, 0);
-  test_puts(str, "closed fd %d\n", fd);
+  test_puts(str, "Closed fd %d\n", fd);
 
   fd = sysopen(KEYBOARD_1);
   assertEquals(rc, 0);
@@ -1318,12 +1318,92 @@ void test_sysopen(void) {
   
   rc = sysclose(fd);
   assertEquals(rc, 0);
-  test_puts(str, "closed fd %d\n", fd);
+  test_puts(str, "Closed fd %d\n", fd);
 }
 
-void test_device(void) {
+void test_sysclose(void) {
+  int rc, fd;
+  char str[TEST_STR_SIZE];
+
+  fd = 0;
+  rc = sysclose(fd);
+  assertEquals(rc, -1);
+  test_puts(str, "sysclose %d returns %d\n", fd, rc);
+
+  fd = -1;
+  rc = sysclose(fd);
+  assertEquals(rc, -1);
+  test_puts(str, "sysclose %d returns %d\n", fd, rc);
+
+  fd = NUM_FD;
+  rc = sysclose(fd);
+  assertEquals(rc, -1);
+  test_puts(str, "sysclose %d returns %d\n", fd, rc);
+
+  fd = sysopen(KEYBOARD_0);
+  assertEquals(fd, 0);
+  test_puts(str, "Opened device %d, got fd %d\n", KEYBOARD_0, fd);
+
+  rc = sysclose(fd);
+  assertEquals(rc, 0);
+  test_puts(str, "sysclose %d returns %d\n", fd, rc);
+
+  rc = sysclose(fd);
+  assertEquals(rc, -1);
+  test_puts(str, "sysclose %d again returns %d\n", fd, rc);
+
+  fd = sysopen(KEYBOARD_1);
+  assertEquals(fd, 0);
+  test_puts(str, "Opened device %d, got fd %d\n", KEYBOARD_1, fd);
+
+  rc = sysclose(fd);
+  assertEquals(rc, 0);
+  test_puts(str, "sysclose %d returns %d\n", fd, rc);
+}
+
+void test_syswrite(void) {
+  int rc, fd;
+  char str[TEST_STR_SIZE], buf[TEST_STR_SIZE];
+
+  fd = -1;
+  rc = syswrite(fd, buf, TEST_STR_SIZE);
+  assertEquals(rc, -1);
+  test_puts(str, "syswrite to fd %d returns %d\n", fd, rc);
+
+  fd = NUM_FD;
+  rc = syswrite(fd, buf, TEST_STR_SIZE);
+  assertEquals(rc, -1);
+  test_puts(str, "syswrite to fd %d returns %d\n", fd, rc);
+
+  fd = 0;
+  rc = syswrite(fd, buf, TEST_STR_SIZE);
+  assertEquals(rc, -1);
+  test_puts(str, "syswrite to fd %d returns %d\n", fd, rc);
+
+  fd = sysopen(KEYBOARD_0);
+  assertEquals(fd, 0);
+  test_puts(str, "Opened device %d, got fd %d\n", KEYBOARD_0, fd);
+
+  rc = syswrite(fd, buf, TEST_STR_SIZE);
+  assertEquals(rc, -1);
+  test_puts(str, "syswrite to fd %d returns %d\n", fd, rc);
+
+  rc = sysclose(fd);
+  assertEquals(rc, 0);
+  test_puts(str, "Closed fd %d\n", fd);
+}
+
+void test_device() {
   test_print("Tests for sysopen:\n");
   create(test_sysopen, TEST_STACK_SIZE, NULL);
+  dispatch();
+
+  test_print("Tests for sysclose:\n");
+  create(test_sysclose, TEST_STACK_SIZE, NULL);
+  dispatch();
+
+  test_print("Tests for syswrite:\n");
+  create(test_syswrite, TEST_STACK_SIZE, NULL);
   dispatch();
 }
 
