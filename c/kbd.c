@@ -26,6 +26,11 @@ void set_keyboard_ISR(void) {
   set_evec(IRQBASE + 1, (unsigned long) _KeyboardISREntryPoint);
 }
 
+/*
+  Checks that the driver has not been opened by another process
+  initializes the driver and enable keyboard interrupt
+  return code tells DII whether it succeeds
+*/
 int _keyboard_open(pcb *p) {
   // Device has already been opened
   if (ps.pcb != NULL) {
@@ -48,6 +53,9 @@ int _keyboard_open(pcb *p) {
   return DRV_DONE;
 }
 
+/*
+  wrapper to set driver to not echo
+*/
 int keyboard_open(pcb* p) {
   if (_keyboard_open(p) == DRV_DONE) {
     ps.echo = 0;
@@ -56,6 +64,9 @@ int keyboard_open(pcb* p) {
   return DRV_ERROR;
 }
 
+/*
+  wrapper to set driver to echo
+*/
 int keyboard_open_echo(pcb* p) {
   if (_keyboard_open(p) == DRV_DONE) {
     ps.echo = 1;
@@ -64,6 +75,9 @@ int keyboard_open_echo(pcb* p) {
   return DRV_ERROR;
 }
 
+/*
+  Clean up driver state and disable keyboard interrupt
+*/
 int keyboard_close(pcb* p) {
   // reset driver state
   ps.pcb = NULL;
@@ -82,6 +96,10 @@ int keyboard_close(pcb* p) {
   return DRV_DONE;
 }
 
+/*
+  Check command is valid and write to keyboard controller
+  return codes tell DII whether the command succeeded
+*/
 int keyboard_ioclt(pcb* p, unsigned long cmd, ...) {
   va_list k_ap, p_ap;
 
@@ -100,6 +118,12 @@ int keyboard_write(pcb* p, void* buf, int buf_len) {
   return DRV_ERROR;
 }
 
+/*
+  Checks if EOF has been reached since the keyboard was opened
+  copy buffer to process and return immediately if there are more
+  characters buffered than request, otherwise it setup a read request
+  in the driver state and tell DII to block the process
+*/
 int keyboard_read(pcb* p, void* buf, int buf_len) {
   if (ps.pcb != p) {
     kprintf("Should not happen\n");
@@ -141,6 +165,13 @@ int keyboard_read(pcb* p, void* buf, int buf_len) {
   }
 }
 
+/*
+  This code is only run when there is an incomplete read request
+  It copies everything in the buffer to the application until one of the
+  unblocking conditions is met. If the buffer does not have enough characters
+  it will tell the caller to block the process, otherwise it will put the
+  process back onto the ready queue
+*/
 int buf_copy() {
   unsigned char a;
   int rc;
@@ -178,6 +209,13 @@ int buf_copy() {
   return DRV_DONE;
 }
 
+/*
+  keyboard IRS
+  This is only invoked when the keyboard interrupts. It checks the keyboard 
+  controller for unread key events, translate scan codes to ASCII and 
+  store them in the driver buffer. If there is an unfulfilled read request
+  it will notify the buf_copy() function afterward.
+*/
 void keyboard_lower() {
   unsigned char byte, a;
   int rc;
@@ -216,6 +254,9 @@ void keyboard_lower() {
   );
 }
 
+/*
+  keyboard interrupt entry point
+*/
 void KeyboardISREntryPoint(void) {
   asm volatile(
   "_KeyboardISREntryPoint:\n"

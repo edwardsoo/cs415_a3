@@ -10,6 +10,10 @@ void fake_return(void){
   sysputs("what the fuck\n");
 }
 
+/*
+  Save a signal handler function pointer in the PCB handlers table
+  Set the system call return values to indicate success or failure.
+*/
 void register_sig_handler(pcb* p, int signal,
     handler new_handler, handler* old_handler) {
 
@@ -36,11 +40,16 @@ void register_sig_handler(pcb* p, int signal,
   p->irc = 0;
 }
 
+/* Trampoline code, is set as the EIP when the kernel delivers a signal */
 void sigtramp(handler handler, void *cntx, void *old_sp) {
   handler(cntx);
   syssigreturn(old_sp);
 }
 
+/* Determines whether the target process is allowing the signal
+  If it is, then prioritize the signal with regards to other signals pending
+  and update PCB state
+ */
 int signal(unsigned int pid, int sig_no) {
   unsigned pcb_index;
   pcb* p;
@@ -73,6 +82,9 @@ int signal(unsigned int pid, int sig_no) {
   return 0;
 }
 
+/*
+  Used by the dispatcher to determine if a signal needs to be deliver
+*/
 void deliver_signal(pcb* p) {
   contextFrame *new_cntx;
   signal_frame *sig_frame;
