@@ -2,9 +2,9 @@
  */
 
 #include <xeroskernel.h>
+#include <xeroslib.h>
 
 /* Your code goes here */
-extern int sprintf(char *str, char *fmt, int args);
 
 void consumer(void) {
   unsigned int self, from_pid, milliseconds;
@@ -34,20 +34,29 @@ void consumer(void) {
 #define NUM_CHILDREN 4
 #define STR_SIZE 0x100
 void root() {
+  unsigned int me;
   int fd, bytes;
   char str[STR_SIZE + 1];
 
-  sprintf(str, "Root process started, str addr 0x%x\n", (unsigned int) str);
+  me = sysgetpid();
+  sprintf(str, "Root (PID %u) process started, str addr 0x%x\n", me, (unsigned int) str);
   sysputs(str);
 
   fd = sysopen(1);
   kprintf("root: sysopen returns %d\n", fd);
 
-  for(;;) {
-    bytes = sysread(fd, str, STR_SIZE);
-    str[bytes] = 0;
-    kprintf("root: sysread returns %d bytes, reads %s", bytes, str);
-  }
+  bytes = sysread(fd, str, STR_SIZE);
+  str[bytes] = 0;
+  kprintf("root: sysread returns %d bytes, reads %s", bytes, str);
+
+  bytes = sysioctl(fd, 53, '!');
+  kprintf("root: sysioctl returns %d\n", bytes);
+
+  bytes = sysread(fd, str, STR_SIZE);
+  str[bytes] = 0;
+  kprintf("root: sysread returns %d bytes, reads %s", bytes, str);
+
+  kprintf("root exiting\n");
 }
 
 void old_root(void) {

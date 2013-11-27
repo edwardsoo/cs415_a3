@@ -1,4 +1,5 @@
 #define KEYBOARD_BUF_LEN 4
+#define EOF_REACHED 1
 typedef struct _proc_state {
   pcb* pcb;
   unsigned char *buf;
@@ -6,6 +7,7 @@ typedef struct _proc_state {
   int ch_read;
   int eof;
   int echo;
+  int status;
 } proc_state;
 
 int keyboard_open(pcb* p);

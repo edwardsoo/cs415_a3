@@ -26,28 +26,7 @@ extern int create (void (*func)(void), int stack, int parent);
 extern void idleproc(void);
 
 extern pcb *ready_queue;
-void print_ready_q() {
-  int nl = 0;
-  pcb *pcb = ready_queue;
-  while (pcb) {
-    assert(pcb->state == READY);
-    nl = 1;
-    kprintf("pid%u->", pcb->pid);
-    pcb = pcb->next;
-  }
-  kprintf(nl?"\n":"");
-}
-
 extern pcb *sleep_list;
-void traverseSleepList(void) {
-  pcb *pcb = sleep_list;
-  kprintf("Sleep list: ");
-  while (pcb) {
-    kprintf("P%u:%u -> ", pcb->pid, pcb->delta);
-    pcb = pcb->next;
-  }
-  kprintf("\n");
-}
 
 void initproc( void )
 {
@@ -130,6 +109,7 @@ void initproc( void )
   }
   pidMapLookup(pid, &pcb_index);
   idle = pcbTable + pcb_index;
+  assertEquals(idle->state, READY);
 
   dispatch();
 
@@ -1087,7 +1067,6 @@ void test_syssigkill(void) {
   assertEquals(rc, 0);
 
 
-  where();
   rc = syskill(bg_pid, TEST_SIG);
   assertEquals(rc, 0);
 }

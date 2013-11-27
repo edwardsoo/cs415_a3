@@ -51,3 +51,13 @@ void sleep(pcb *p, unsigned int milliseconds) {
     ready(p);
   }
 }
+
+void traverseSleepList(void) {
+  pcb *pcb = sleep_list;
+  kprintf("Sleep list: ");
+  while (pcb) {
+    kprintf("P%u:%u -> ", pcb->pid, pcb->delta);
+    pcb = pcb->next;
+  }
+  kprintf("\n");
+}

@@ -50,7 +50,7 @@ typedef enum {
 #endif
 
 // test toggle
-#define RUNTEST 0
+#define RUNTEST 1
 #define TEST_VERBOSE 1
 // max/min
 #define max(a,b) \

@@ -14,11 +14,11 @@ extern int create (void (*func)(void), int stack, unsigned int parent);
 extern void register_sig_handler(pcb* p, int signal, handler, handler*);
 extern void deliver_signal(pcb* p);
 extern int signal(unsigned int pid, int sig_no);
-extern void di_open(pcb* p, int major_no);
-extern void di_close(pcb* p, int fd);
-extern void di_write(pcb* p, int fd, void* buf, int buflen);
-extern void di_read(pcb* p, int fd, void* buf, int buflen);
-extern void di_ioctl(pcb* p, int fd, unsigned long cmd, va_list ap);
+extern int di_open(pcb* p, int major_no);
+extern int di_close(pcb* p, int fd);
+extern int di_write(pcb* p, int fd, void* buf, int buflen);
+extern int di_read(pcb* p, int fd, void* buf, int buflen);
+extern int di_ioctl(pcb* p, int fd, unsigned long cmd, va_list ap);
 
 const char* syscall_str[] = {
   "TIME_INT", "CREATE", "YIELD", "STOP", "GET_PID", "GET_P_PID", "PUTS",
@@ -27,6 +27,7 @@ const char* syscall_str[] = {
 };
 
 void cleanup(pcb* p);
+void print_ready_q(void);
 
 // Some process management variables
 pcb pcbTable[MAX_NUM_PROCESS];
@@ -138,6 +139,7 @@ void dispatch(void) {
         break;
       case OPEN:
         di_open(p, va_arg(ap, int));
+        to_ready = p;
         break;
       case CLOSE:
         di_close(p, va_arg(ap, int));
@@ -145,17 +147,28 @@ void dispatch(void) {
       case WRITE:
         fd = va_arg(ap, int);
         buf = (void*) va_arg(ap, int);
-        di_write(p, fd, buf, va_arg(ap, int));
+        rc = di_write(p, fd, buf, va_arg(ap, int));
+        if (rc == DRV_BLOCK) {
+          p->state = WRITING;
+        } else {
+          to_ready = p;
+        }
         break;
       case READ:
         fd = va_arg(ap, int);
         buf = (void*) va_arg(ap, int);
-        di_read(p, fd, buf, va_arg(ap, int));
+        rc = di_read(p, fd, buf, va_arg(ap, int));
+        if (rc == DRV_BLOCK) {
+          p->state = READING;
+        } else {
+          to_ready = p;
+        }
         break;
       case IO_CTL:
         fd = va_arg(ap, int);
         cmd = (unsigned long) va_arg(ap, long);
         di_ioctl(p, fd, cmd, va_arg(ap, va_list));
+        to_ready = p;
         break;
       default:
         break;
@@ -206,11 +219,14 @@ int pidMapLookup(unsigned int pid, unsigned int *pcbIndex) {
 /* PCB queues, init, and cleanup functions */
 void init_pcb_table(void) {
   unsigned int i;
+  pcb* p;
 
   for (i = 0; i < MAX_NUM_PROCESS; i++) {
-    pcbTable[i].pid = 0;
-    pcbTable[i].state = STOPPED;
-    pcbTable[i].next = pcbTable[i].senders = pcbTable[i].receivers = NULL;
+    p = pcbTable + i;
+    p->pid = 0;
+    p->state = STOPPED;
+    p->next = p->senders = p->receivers = NULL;
+    p->irc = p->iargs = p->delta = p->pending_sig = p->allowed_sig = 0;
   }
   nextPid = 1;
   ready_queue = NULL;
@@ -241,9 +257,10 @@ void ready(pcb* p) {
 }
 
 void cleanup(pcb* p) {
+  int fd;
   pcb *sender, *receiver;
 
-  // unblock all blocked trying to send to/ receive from this process
+  // Unblock all blocked trying to send to/ receive from this process
   while (p->senders) {
     sender = p->senders;
     p->senders = sender->next;
@@ -256,11 +273,31 @@ void cleanup(pcb* p) {
     receiver->irc = SYS_SR_NO_PID;
     ready(receiver);
   }
+
+  // Close all opened device
+  for (fd = 0; fd < NUM_FD; fd++) {
+    if (p->opened_dv[fd]) {
+      di_close(p, fd);
+    }
+  }
+
   kfree(p->stack);
   p->next = NULL;
   p->stack = NULL;
   p->state = STOPPED;
   pidMapDelete(p->pid);
+}
+
+void print_ready_q() {
+  int nl = 0;
+  pcb *pcb = ready_queue;
+  while (pcb) {
+    nl = 1;
+    kprintf("pid%u->", pcb->pid);
+    assertEquals(pcb->state, READY);
+    pcb = pcb->next;
+  }
+  kprintf(nl?"\n":"");
 }
 
 /******************************************************************************

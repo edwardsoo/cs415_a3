@@ -3,14 +3,13 @@
 
 devsw devtab[NUM_DEVICE];
 
-void di_open(pcb* p, int dv_no) {
+int di_open(pcb* p, int dv_no) {
   int fd;
 
-  kprintf("PID %d request open device %d\n", p->pid, dv_no);
   // Invalid device number
   if (dv_no < 0 || dv_no >= NUM_DEVICE) {
-    where();
     p->irc = -1;
+    return DRV_ERROR;
 
   } else {
     // Look for empty slot in PCB FDT
@@ -25,99 +24,102 @@ void di_open(pcb* p, int dv_no) {
     if (fd < NUM_FD && devtab[dv_no].dvopen(p) == DRV_DONE) {
       p->opened_dv[fd] = devtab + dv_no;
       p->irc = fd;
+      return DRV_DONE;
 
     } else {
       p->irc = -1;
+      return DRV_ERROR;
     }
   }
-  ready(p); 
 }
 
-void di_close(pcb* p, int fd) {
+int di_close(pcb* p, int fd) {
   // Invalid device number or device not opened by process
   if (fd < 0 || fd >= NUM_DEVICE || p->opened_dv[fd] == NULL) {
     p->irc = -1;
+    return DRV_ERROR;
 
   } else {
     // Drive closed device for process
     if (devtab[fd].dvclose(p) == DRV_DONE) {
       p->opened_dv[fd] = NULL;
       p->irc = 0;
+      return DRV_DONE;
 
     } else {
       p->irc = -1;
+      return DRV_ERROR;
     }
   }
-  ready(p);
 }
 
-void di_write(pcb* p, int fd, void* buf, int buf_len) {
+int di_write(pcb* p, int fd, void* buf, int buf_len) {
   int rc;
 
   // Invalid device number or device not opened by process
   if (fd < 0 || fd >= NUM_DEVICE || p->opened_dv[fd] == NULL) {
     p->irc = -1;
-    ready(p);
+    return DRV_ERROR;
 
   } else {
     rc = devtab[fd].dvwrite(p, buf, buf_len);
     // Driver accepted write request and blocked process
     if (rc == DRV_BLOCK) {
-      p->state = WAITING;
+      return DRV_BLOCK;
 
     // Driver completed write
     } else if (rc == DRV_DONE) {
-      ready(p);
+      return DRV_DONE;
 
     } else {
       p->irc = -1;
-      ready(p);
+      return DRV_ERROR;
     }
   }
 }
 
-void di_read(pcb* p, int fd, void* buf, int buf_len) {
+int di_read(pcb* p, int fd, void* buf, int buf_len) {
   int rc;
 
   // Invalid device number or device not opened by process
   if (fd < 0 || fd >= NUM_DEVICE || p->opened_dv[fd] == NULL) {
     p->irc = -1;
-    ready(p);
+    return DRV_ERROR;
 
   } else {
     rc = devtab[fd].dvread(p, buf, buf_len);
     // Driver accepted read request and blocked process
     if (rc == DRV_BLOCK) {
-      p->state = READING;
+      return DRV_BLOCK;
 
     // Driver completed read
     } else if (rc == DRV_DONE) {
-      ready(p);
+      return DRV_DONE;
 
     } else {
       p->irc = -1;
-      ready(p);
+      return DRV_ERROR;
     }
   }
 }
 
-void di_ioctl(pcb* p, int fd, unsigned long cmd, va_list ap) {
+int di_ioctl(pcb* p, int fd, unsigned long cmd, va_list ap) {
   int rc;
 
   // Invalid device number or device not opened by process
   if (fd < 0 || fd >= NUM_DEVICE || p->opened_dv[fd] == NULL) {
     p->irc = -1;
-    ready(p);
+    return DRV_ERROR;
 
   } else {
     rc = devtab[fd].dvioctl(p, cmd, ap);
     if (rc == DRV_DONE) {
       p->irc = 0;
-      ready(p);
+      return DRV_DONE;
 
     } else {
       p->irc = -1;
-      ready(p);
+      return DRV_ERROR;
     }
   }
 }

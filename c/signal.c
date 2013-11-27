@@ -63,9 +63,11 @@ int signal(unsigned int pid, int sig_no) {
     if (p->state == STOPPED) {
       abort();
     } else if (p->state > READY && p->state < WAITING) {
+      where();
       ready(p);
       p->irc = -129;
     } else if (p->state == WAITING) {
+      where();
       ready(p);
       p->irc = sig_no;
     }

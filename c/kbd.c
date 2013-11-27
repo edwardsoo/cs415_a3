@@ -26,10 +26,9 @@ void set_keyboard_ISR(void) {
   set_evec(IRQBASE + 1, (unsigned long) _KeyboardISREntryPoint);
 }
 
-int keyboard_open(pcb* p) {
+int _keyboard_open(pcb *p) {
   // Device has already been opened
   if (ps.pcb != NULL) {
-    where();
     return DRV_ERROR;
   }
 
@@ -39,7 +38,9 @@ int keyboard_open(pcb* p) {
   ps.buf_len = 0;
   ps.ch_read = 0;
   ps.eof = DEFAULT_EOF;
-  ps.echo = 0;
+  ps.status = 0;
+  head = 0;
+  size = 0;
 
   // enable keyboard interrupt
   enable_irq(1,0);
@@ -47,25 +48,20 @@ int keyboard_open(pcb* p) {
   return DRV_DONE;
 }
 
-int keyboard_open_echo(pcb* p) {
-  // Device has already been opened
-  if (ps.pcb != NULL) {
-    where();
-    return DRV_ERROR;
+int keyboard_open(pcb* p) {
+  if (_keyboard_open(p) == DRV_DONE) {
+    ps.echo = 0;
+    return DRV_DONE;
   }
+  return DRV_ERROR;
+}
 
-  // set driver state
-  ps.pcb = p;
-  ps.buf = NULL;
-  ps.buf_len = 0;
-  ps.ch_read = 0;
-  ps.eof = DEFAULT_EOF;
-  ps.echo = 1;
-
-  // enable keyboard interrupt
-  enable_irq(1,0);
-
-  return DRV_DONE;
+int keyboard_open_echo(pcb* p) {
+  if (_keyboard_open(p) == DRV_DONE) {
+    ps.echo = 1;
+    return DRV_DONE;
+  }
+  return DRV_ERROR;
 }
 
 int keyboard_close(pcb* p) {
@@ -76,6 +72,9 @@ int keyboard_close(pcb* p) {
   ps.ch_read = 0;
   ps.eof = DEFAULT_EOF;
   ps.echo = 0;
+  ps.status = 0;
+  head = 0;
+  size = 0;
 
   // disable keyboard interrupt
   enable_irq(1,1);
@@ -85,11 +84,16 @@ int keyboard_close(pcb* p) {
 
 int keyboard_ioclt(pcb* p, unsigned long cmd, ...) {
   va_list k_ap, p_ap;
-  va_start(k_ap, cmd);
-  p_ap = va_arg(k_ap, va_list);
-  ps.eof = va_arg(p_ap, int);
-  va_end(k_ap);
-  return DRV_DONE;
+
+  if (cmd == 53) {
+    va_start(k_ap, cmd);
+    p_ap = va_arg(k_ap, va_list);
+    ps.eof = va_arg(p_ap, int);
+    va_end(k_ap);
+    return DRV_DONE;
+  } else {
+    return DRV_ERROR;
+  }
 }
 
 int keyboard_write(pcb* p, void* buf, int buf_len) {
@@ -102,8 +106,8 @@ int keyboard_read(pcb* p, void* buf, int buf_len) {
     abort();
   }
   
-  // Process wants to read 1 or more byte, block process
-  if (buf_len) {
+  // Process wants to read and EOF not reached, block process
+  if (!(ps.status & EOF_REACHED) && buf_len) {
     ps.buf = buf;
     ps.buf_len = buf_len;
     ps.ch_read = 0;
@@ -118,7 +122,7 @@ int keyboard_read(pcb* p, void* buf, int buf_len) {
 
 void buf_copy() {
   unsigned char c, a;
-  int rc, i;
+  int rc;
   
   if (!ps.pcb) {
     // Print chars for testing
@@ -143,11 +147,16 @@ void buf_copy() {
 
     // Reach EOF
     if (a == ps.eof) {
+      ps.status |= EOF_REACHED;
       goto read_done;
     }
 
     if (a && a != NOCHAR) {
       ps.buf[ps.ch_read] = a;
+      // Echo
+      if (ps.echo) {
+        kputc(0, a);
+      }
       ps.ch_read++;
       if (a == '\n') {
         goto read_done;
@@ -156,11 +165,6 @@ void buf_copy() {
   } while (ps.ch_read < ps.buf_len);
 
   read_done:
-  if (ps.echo) {
-    for (i = 0; i < ps.ch_read; i++) {
-      kputc(0, ps.buf[i]);
-    }
-  }
   ps.pcb->irc = ps.ch_read;
   ready(ps.pcb);
 }
