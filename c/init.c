@@ -1438,6 +1438,8 @@ void test_device() {
   test_print("Tests for sysioctl:\n");
   create(test_sysioctl, TEST_STACK_SIZE, NULL);
   dispatch();
+
+  test_print("Tests for nonblocking sysread:\n");
 }
 
 /* END OF TEST CODE*/

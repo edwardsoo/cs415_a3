@@ -10,7 +10,7 @@
 extern void set_evec(unsigned int xnum, unsigned long handler);
 extern void enable_irq(unsigned int, int);
 extern void	kputc(int, unsigned char);
-static void buf_copy(void);
+static int buf_copy(void);
 static int insert(unsigned char c);
 static int remove(unsigned char *c);
 static unsigned int kbtoa( unsigned char code );
@@ -106,13 +106,24 @@ int keyboard_read(pcb* p, void* buf, int buf_len) {
     abort();
   }
   
-  // Process wants to read and EOF not reached, block process
-  if (!(ps.status & EOF_REACHED) && buf_len) {
+  // Process wants to read, EOF not reached 
+  // but kernel buffer size is less than request length
+  if (!(ps.status & EOF_REACHED) && size < buf_len) {
     ps.buf = buf;
     ps.buf_len = buf_len;
     ps.ch_read = 0;
     p->state = READING;
     return DRV_BLOCK;
+
+  // Buffer has more characters than the request length
+  } else if (size >= buf_len) {
+    if (buf_copy() == DRV_DONE) {
+      return DRV_DONE;
+    } else {
+      where();
+      abort();
+      return DRV_BLOCK;
+    }
 
   } else {
     p->irc = 0;
@@ -120,30 +131,24 @@ int keyboard_read(pcb* p, void* buf, int buf_len) {
   }
 }
 
-void buf_copy() {
-  unsigned char c, a;
+int buf_copy() {
+  unsigned char a;
   int rc;
   
   if (!ps.pcb) {
-    // Print chars for testing
-    while(remove(&c) == 0) {
-      kprintf("KB irq no process, read %c\n", kbtoa(c));
-    }
-    return;
+    where();
+    abort();  
   }
 
   // Copy bytes from character buffer to process buffer
   // Loop until buffer empty or read request met unblock condition
   do {
-    rc = remove(&c);
+    rc = remove(&a);
 
     // buffer empty
     if (rc != 0) {
-      return;
+      return DRV_BLOCK;
     }
-
-    // Scan code to ASCII
-    a = kbtoa(c);
 
     // Reach EOF
     if (a == ps.eof) {
@@ -151,26 +156,21 @@ void buf_copy() {
       goto read_done;
     }
 
-    if (a && a != NOCHAR) {
-      ps.buf[ps.ch_read] = a;
-      // Echo
-      if (ps.echo) {
-        kputc(0, a);
-      }
-      ps.ch_read++;
-      if (a == '\n') {
-        goto read_done;
-      }
+    ps.buf[ps.ch_read] = a;
+    ps.ch_read++;
+    if (a == '\n') {
+      goto read_done;
     }
+
   } while (ps.ch_read < ps.buf_len);
 
   read_done:
   ps.pcb->irc = ps.ch_read;
-  ready(ps.pcb);
+  return DRV_DONE;
 }
 
 void keyboard_lower() {
-  unsigned char byte;
+  unsigned char byte, a;
   int rc;
 
   rc = 0;
@@ -179,12 +179,22 @@ void keyboard_lower() {
   // the kernel buffer is not full
   while (byte & 1 && rc == 0) {
     byte = inb(0x60);
-    rc = insert(byte);
+    // Scan code to ASCII
+    a = kbtoa(byte);
+    if (a && a != NOCHAR) {
+      rc = insert(a);
+      // Echo
+      if (ps.echo) {
+        kputc(0, a);
+      }
+    }
     byte = inb(0x64);
   }
 
   // Let upper half feed buffer to process
-  buf_copy();
+  if (buf_copy() == DRV_DONE) {
+    ready(ps.pcb);
+  }
 
   // signal APIC end of interrupt
   outb(ICU1, EOI); 
