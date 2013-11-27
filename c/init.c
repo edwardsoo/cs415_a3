@@ -28,20 +28,26 @@ extern void idleproc(void);
 extern pcb *ready_queue;
 extern pcb *sleep_list;
 
-void initproc( void )
-{
-  int pid;
-  unsigned int pcb_index;
+static void run_test(void);
+static void init_keyboard(void);
 
-	kprintf( "\n\nCPSC 415, 2013W1 \n32 Bit Xeros 1.1\nLocated at: %x to %x\n", &entry, &end ); 
+/* Test functions */
+#if RUNTEST
+static void testFreeList(void);
+static void testKmalloc(void);
+static void testContextSwitch(void);
+static void testProcessManagement(void);
+static void testPidMap(void);
+static void testSendReceive(void);
+static void testTimeSharing(void);
+static void testSleepList(void);
+static void test_signal(void);
 
-  /* Your code goes here */
-
-  #if RUNTEST
+void run_test() {
   // Test without pre-emption
   kmeminit();
-  initSyscall();
   init_pcb_table();
+  initSyscall();
 
   testKmalloc();
   kprintf("Passed memory test 1\n");
@@ -58,6 +64,7 @@ void initproc( void )
   testSleepList();
   kprintf("Passed sleep list test\n");
   
+
   // Test with pre-emption
   enableTimerInterrupt();
 
@@ -65,21 +72,17 @@ void initproc( void )
   kprintf("Passed time sharing test\n");
   test_signal();
   kprintf("Passed signal tests\n");
+
+
+  // Test with keyboard enabled
+  init_keyboard();
+
   kprintf("Passed all tests\n");
-  #endif
+}
+#endif
 
-  // Init memory management
-  kmeminit();
 
-  // Init some PCB stuff
-  init_pcb_table();
-
-  // Set ISR for syscall interrupt
-  initSyscall();
-
-  // Enable pre-emption
-  enableTimerInterrupt();
-
+void init_keyboard() {
   // Set keyboard ISR and init device struct
   set_keyboard_ISR();
   devtab[KEYBOARD_0].dvopen = keyboard_open;
@@ -94,6 +97,35 @@ void initproc( void )
   devtab[KEYBOARD_1].dvioctl = keyboard_ioclt;
   // Disable keyboard interrupt
   enable_irq(1,1);
+}
+
+void initproc( void )
+{
+  int pid;
+  unsigned int pcb_index;
+
+	kprintf( "\n\nCPSC 415, 2013W1 \n32 Bit Xeros 1.1\nLocated at: %x to %x\n", &entry, &end ); 
+
+  /* Your code goes here */
+
+  #if RUNTEST
+  run_test();
+  #endif
+
+  // Init memory management
+  kmeminit();
+
+  // Init some PCB stuff
+  init_pcb_table();
+
+  // Set ISR for syscall interrupt
+  initSyscall();
+
+  // Enable pre-emption
+  enableTimerInterrupt();
+
+  // Init keyboard device structs and set ISR
+  init_keyboard();
 
   // Create first user process
   pid = create(root, 0x2000, NULL);
@@ -827,7 +859,6 @@ void preemptive(void) {
   sysyield();
 
   sprintf(str, "Process %03u set global variable to True\n", pid);
-  test_puts(str);
   preempted = TRUE;
 }
 
@@ -838,31 +869,26 @@ void gets_preempted(void) {
   syscreate(preemptive, TEST_STACK_SIZE);
 
   sprintf(str, "Process %03u set global variable to False\n", pid);
-  test_puts(str);
 
   preempted = FALSE;
   // this process does not yield; must be preempted
   sprintf(str, "Process %03u entering loop with condition (global variable == False)\n", pid);
-  test_puts(str);
 
   while (!preempted);
   
   sprintf(str, "Process %03u was preempted, exiting\n", pid);
-  test_puts(str);
 }
 
 void idling(void) {
   char str[0x100];
 
   sprintf(str, "Idling process gets to run\n", 0);
-  test_puts(str);
 
   while (!awake) {
     ticks++;
     asm("hlt;\n":::);
   }
   sprintf(str, "Idling process looped %u times before exiting\n", ticks);
-  test_puts(str);
 }
 
 void sleeping(void) {
@@ -872,11 +898,9 @@ void sleeping(void) {
   ms = 1000;
   pid = sysgetpid();
   sprintf(str, "Process %03u calling syssleep\n", pid);
-  test_puts(str);
 
   assert(syssleep(ms) == 0);
   sprintf(str, "Process %03u is awoken\n", pid);
-  test_puts(str);
   awake = TRUE;  
 }
 
@@ -909,16 +933,14 @@ void testTimeSharing(void) {
 void handler_exit(void *cntx) {
   char str[0x100];
   unsigned int me = sysgetpid();
-  sprintf(str, "Process %03u received signal, calling sysstop now\n", me);
-  sysputs(str);
+  test_puts(str, "Process %03u received signal, calling sysstop now\n", me);
   sysstop();
 }
 
 void handler_nothing(void *cntx) {
   char str[0x100];
   unsigned int me = sysgetpid();
-  sprintf(str, "Process %03u received signal, does nothing\n", me);
-  sysputs(str);
+  test_puts(str, "Process %03u received signal, does nothing\n", me);
 }
 
 #define TEST_SIG 20
@@ -971,19 +993,16 @@ void loop_wait_sig(void) {
   // Set signal handler
   rc = syssighandler(TEST_SIG, handler_exit, NULL);
   assertEquals(rc, 0);
-  sprintf(str, "Process %03u registered handler_exit for signal %d\n", me, TEST_SIG);
-  sysputs(str);
+  test_puts(str, "Process %03u registered handler_exit for signal %d\n", me, TEST_SIG);
 
   // Tell parent it's ready
   rc = syssend(ppid, NULL, 0);
   assertEquals(rc, 0);
 
   // Enter loop
-  sprintf(str, "Process %03u entering infinite loop\n", me);
-  sysputs(str);
+  test_puts(str, "Process %03u entering infinite loop\n", me);
   while(1);
-  sprintf(str, "%s(%u): should not reach here\n", __func__, __LINE__);
-  sysputs(str);
+  test_puts(str, "%s(%u): should not reach here\n", __func__, __LINE__);
 }
 
 void interrupted_by_sig(void) {
@@ -997,8 +1016,7 @@ void interrupted_by_sig(void) {
   // Set signal handler
   rc = syssighandler(TEST_SIG, handler_nothing, NULL);
   assertEquals(rc, 0);
-  sprintf(str, "Process %03u registered handler_nothing for signal %d\n", me, TEST_SIG);
-  sysputs(str);
+  test_puts(str, "Process %03u registered handler_nothing for signal %d\n", me, TEST_SIG);
 
   // Tell parent it's ready
   rc = syssend(ppid, &me, sizeof(int));
@@ -1006,8 +1024,7 @@ void interrupted_by_sig(void) {
   // Wait for parent to signal
   rc = sysrecv(&ppid, NULL, 0);
   assertEquals(rc, -129);
-  sprintf(str, "Process %03u returns from sysrecv\n", me);
-  sysputs(str);
+  test_puts(str, "Process %03u returns from sysrecv\n", me);
 }
 
 void test_syssigkill(void) {
@@ -1025,8 +1042,7 @@ void test_syssigkill(void) {
 
   // Create a child process that only exits when receiving signal 20
   pid = syscreate(loop_wait_sig, TEST_STACK_SIZE);
-  sprintf(str, "Process %03u created process %03d\n", me, pid);
-  sysputs(str);
+  test_puts(str, "Process %03u created process %03d\n", me, pid);
 
   // Wait for child process to set signal handler
   rc = sysrecv(&pid, NULL, 0);
@@ -1041,17 +1057,15 @@ void test_syssigkill(void) {
   assertEquals(rc, -12);
 
   // Send signal 20 to child process
-  sprintf(str, "Process %03u sending signal %d to process %03u\n",
+  test_puts(str, "Process %03u sending signal %d to process %03u\n",
       me, TEST_SIG, pid);
-  sysputs(str);
   rc = syskill(pid, TEST_SIG);
   assertEquals(rc, 0);
 
   // Create a child process that blocks receiving, but it is not going to
   // receive any message because we will interrupt it with a signal
   pid = syscreate(interrupted_by_sig, TEST_STACK_SIZE);
-  sprintf(str, "Process %03u created process %03d\n", me, pid);
-  sysputs(str);
+  test_puts(str, "Process %03u created process %03d\n", me, pid);
 
   // Give time for child process to set sighandler
   rc = sysrecv(&pid, &msg, sizeof(int));
@@ -1060,9 +1074,8 @@ void test_syssigkill(void) {
   syssleep(1500);
 
   // Zap that blocked receiving retarded
-  sprintf(str, "Process %03u sending signal %d to process %03u\n",
+  test_puts(str, "Process %03u sending signal %d to process %03u\n",
       me, TEST_SIG, pid);
-  sysputs(str);
   rc = syskill(pid, TEST_SIG);
   assertEquals(rc, 0);
 
@@ -1082,19 +1095,16 @@ void blocked_wait_sig(void) {
   // Set signal handler
   rc = syssighandler(TEST_SIG, handler_nothing, NULL);
   assertEquals(rc, 0);
-  sprintf(str, "Process %03u registered handler_nothing for signal %d\n", me, TEST_SIG);
-  sysputs(str);
+  test_puts(str, "Process %03u registered handler_nothing for signal %d\n", me, TEST_SIG);
 
   // Tell parent it's ready
   rc = syssend(ppid, &me, sizeof(int));
   assertEquals(rc, sizeof(int));
 
   // Wait for parent to signal
-  sprintf(str, "Process %03u calling syssigwait\n", me);
-  sysputs(str);
+  test_puts(str, "Process %03u calling syssigwait\n", me);
   rc = syssigwait();
-  sprintf(str, "Process %03u returns from syssigwait\n", me);
-  sysputs(str);
+  test_puts(str, "Process %03u returns from syssigwait\n", me);
   assertEquals(rc, TEST_SIG);
 }
 
@@ -1109,8 +1119,7 @@ void test_syssigwait(void) {
 
   // Create a child process that does a sigwait before exiting
   pid = syscreate(blocked_wait_sig, TEST_STACK_SIZE);
-  sprintf(str, "Process %03u created process %03u\n", me, pid);
-  sysputs(str);
+  test_puts(str, "Process %03u created process %03u\n", me, pid);
 
   // Wait for child process to set handler and call syssigwait
   rc = sysrecv(&pid, &msg, sizeof(int));
@@ -1118,9 +1127,8 @@ void test_syssigwait(void) {
   syssleep(1000);
 
   // Send signal 20
-  sprintf(str, "Process %03u sending signal %d to process %03u\n",
+  test_puts(str, "Process %03u sending signal %d to process %03u\n",
       me, TEST_SIG, pid);
-  sysputs(str);
   rc = syskill(pid, TEST_SIG);
   assertEquals(rc, 0);
 
@@ -1138,17 +1146,14 @@ void send_sig_lo(void* cntx) {
 
   me = sysgetpid();
   char str[0x100];
-  sprintf(str, "Process %03d received signal %d, calling sysrecv\n", me, SIG_LO);
-  sysputs(str);
+  test_puts(str, "Process %03d received signal %d, calling sysrecv\n", me, SIG_LO);
   pid = sysgetppid();
   rc = sysrecv(&pid, NULL, 0);
   assertEquals(rc, -129);
   
-  sprintf(str, "Process %03d sending kill signal to self\n", me);
-  sysputs(str);
+  test_puts(str, "Process %03d sending kill signal to self\n", me);
   syskill(me, TEST_SIG);
-  sprintf(str, "Process %03d signal %d handler returning\n", me, SIG_LO);
-  sysputs(str);
+  test_puts(str, "Process %03d signal %d handler returning\n", me, SIG_LO);
 }
 void send_sig_mid(void* cntx) {
   unsigned int me, pid;
@@ -1156,13 +1161,11 @@ void send_sig_mid(void* cntx) {
 
   me = sysgetpid();
   char str[0x100];
-  sprintf(str, "Process %03d received signal %d, calling sysrecv\n", me, SIG_MID);
-  sysputs(str);
+  test_puts(str, "Process %03d received signal %d, calling sysrecv\n", me, SIG_MID);
   pid = sysgetppid();
   rc = sysrecv(&pid, NULL, 0);
   assertEquals(rc, -129);
-  sprintf(str, "Process %03d signal %d handler returning\n", me, SIG_MID);
-  sysputs(str);
+  test_puts(str, "Process %03d signal %d handler returning\n", me, SIG_MID);
 }
 void send_sig_hi(void* cntx) {
   unsigned int ppid, me;
@@ -1172,13 +1175,11 @@ void send_sig_hi(void* cntx) {
   me = sysgetpid();
   msg = SIG_HI;
   char str[0x100];
-  sprintf(str, "Process %03d received signal %d, calling syssend to process %03d\n",
+  test_puts(str, "Process %03d received signal %d, calling syssend to process %03d\n",
       me, SIG_HI, ppid);
-  sysputs(str);
   rc = syssend(ppid, &msg, sizeof(int)); 
   assertEquals(rc, sizeof(int));
-  sprintf(str, "Process %03d signal %d handler returning\n", me, SIG_HI);
-  sysputs(str);
+  test_puts(str, "Process %03d signal %d handler returning\n", me, SIG_HI);
 }
 
 void stack_sigtramp(void) {
@@ -1198,8 +1199,7 @@ void stack_sigtramp(void) {
   assertEquals(rc, 0);
   rc = syssighandler(SIG_HI, send_sig_hi, NULL);
   assertEquals(rc, 0);
-  sprintf(str, "Process %03u done setting signal handlers\n", me);
-  sysputs(str);
+  test_puts(str, "Process %03u done setting signal handlers\n", me);
 
   // Tell parent it's ready
   syssend(ppid, &me, sizeof(int));
@@ -1215,13 +1215,11 @@ void test_stack_sigtramp(void) {
 
   // Create idle process to prevent dispatch returning
   bg_pid = syscreate(idle_wait_sig, TEST_STACK_SIZE); 
-  sprintf(str, "Process %03u created idle process %03d\n", me, bg_pid);
-  sysputs(str);
+  test_puts(str, "Process %03u created idle process %03d\n", me, bg_pid);
 
   // Create a child process that accepts signals of different priorities
   pid = syscreate(stack_sigtramp, TEST_STACK_SIZE);
-  sprintf(str, "Process %03u created process %03d\n", me, pid);
-  sysputs(str);
+  test_puts(str, "Process %03u created process %03d\n", me, pid);
 
   // Wait for child to set up handlers
   rc = sysrecv(&pid, &msg, sizeof(int));
@@ -1229,31 +1227,26 @@ void test_stack_sigtramp(void) {
   assertEquals(rc, sizeof(int));
 
   // Send signals in increasing priority so sigtramp would stack
-  sprintf(str, "Process %03u sending signal %d to process %03d\n", me, SIG_LO, pid);
-  sysputs(str);
+  test_puts(str, "Process %03u sending signal %d to process %03d\n", me, SIG_LO, pid);
   rc = syskill(pid, SIG_LO);
   assertEquals(rc, 0);
   syssleep(1000);
-  sprintf(str, "Process %03u sending signal %d to process %03d\n", me, SIG_MID, pid);
-  sysputs(str);
+  test_puts(str, "Process %03u sending signal %d to process %03d\n", me, SIG_MID, pid);
   rc = syskill(pid, SIG_MID);
   assertEquals(rc, 0);
   syssleep(1000);
-  sprintf(str, "Process %03u sending signal %d to process %03d\n", me, SIG_HI, pid);
-  sysputs(str);
+  test_puts(str, "Process %03u sending signal %d to process %03d\n", me, SIG_HI, pid);
   rc = syskill(pid, SIG_HI);
   assertEquals(rc, 0);
 
   // Receive message from child process handlers
   rc = sysrecv(&pid, &msg, sizeof(int));
   assertEquals(msg, SIG_HI);
-  sprintf(str, "Process %03u received message from process %03d signal %d handler\n",
+  test_puts(str, "Process %03u received message from process %03d signal %d handler\n",
       me, pid, msg);
-  sysputs(str);
   
   rc = syskill(bg_pid, TEST_SIG);
-  sprintf(str, "Process %03u exiting\n", me);
-  sysputs(str);
+  test_puts(str, "Process %03u exiting\n", me);
   
 
   // Give child processes some time to finish first
@@ -1282,6 +1275,8 @@ void test_signal(void) {
   dispatch();
 }
 
+void test_device(void) {
+}
 
 /* END OF TEST CODE*/
 #endif

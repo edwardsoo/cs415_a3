@@ -20,13 +20,6 @@ typedef	char		Bool;		/* Boolean type			*/
 					/*  (usu. defined as ^B)	*/
 #define	BLOCKERR	-5		/* non-blocking op would block	*/
 
-// Context switch syscall request types
-typedef enum {
-  TIME_INT, CREATE, YIELD, STOP, GET_PID, GET_P_PID, PUTS, SEND, RECV,
-  SYS_TIMER, SLEEP, SIGHANDLER, SIGRETURN, KILL, SIGWAIT, OPEN, CLOSE,
-  WRITE, READ, IO_CTL
-} request_type;
-
 // Kernel global defines
 #define SYSCALL 80
 #define xstr(exp) str(exp)
@@ -40,6 +33,19 @@ typedef enum {
 #define KEYBOARD_1 KEYBOARD_0 + 1
 #define NUM_DEVICE KEYBOARD_1 + 1
 
+// IPC return codes
+#define SYS_SR_NO_PID -1
+#define SYS_SR_SELF -2
+#define SYS_SR_ERR -3
+
+// Driver to DII return codes
+#define DRV_DONE   0
+#define DRV_BLOCK  1
+#define DRV_ERROR -1
+
+// System timer init params
+#define TIME_SLICE_MS 10
+#define TIME_SLICE_DIV (1000/TIME_SLICE_MS)
 
 // debug print toggle
 #define DEBUG 0
@@ -52,6 +58,7 @@ typedef enum {
 // test toggle
 #define RUNTEST 1
 #define TEST_VERBOSE 1
+
 // max/min
 #define max(a,b) \
    ({ __typeof__ (a) _a = (a); \
@@ -62,21 +69,51 @@ typedef enum {
        __typeof__ (b) _b = (b); \
      _a < _b ? _a : _b; })
 
-// mask operations
+// Signal number to integer with bit at position signo set
 #define SIG_INT(sig) (1 << sig)
+
+/* Test functions and macro */
+#if TEST_VERBOSE
+#define test_print(...) kprintf(__VA_ARGS__)
+#define test_puts(S, F, ...) sprintf(S, F, ##__VA_ARGS__); \
+  sysputs(S)
+#else
+#define test_print(...)
+#define test_puts(...)
+#endif
+
+#define assertEquals(A, E); \
+  if (E != A) {\
+    kprintf("%s(%u): Assertion failed: actual 0x%x mismatch expected 0x%x\n", __func__, __LINE__, A, E);\
+    for(;;);\
+  }
+#define assert(C); \
+  if (!(C)) {\
+    kprintf("%s(%u): Assertion failed: (%s) not true\n", __func__, __LINE__, xstr(C));\
+    for(;;);\
+  }
+#define where(); \
+  kprintf("%s(%u)\n", __func__, __LINE__);
+
+
+
 
 // Memory block header
 typedef struct _memHeader {
-  unsigned long size; // Size of the usable memory of this node
-  struct _memHeader *prev; // Free node with the highest address that is lower than this
-  struct _memHeader *next; // Free node with the lowest address that is higher than this
-  char *sanityCheck; // Should be the same as dataStart when this node is allocated
+ // Size of the usable memory of this node
+  unsigned long size;
+ // Free node with the highest address that is lower than this
+  struct _memHeader *prev;
+ // Free node with the lowest address that is higher than this
+  struct _memHeader *next;
+ // Should be the same as dataStart when this node is allocated
+  char *sanityCheck;
   unsigned char dataStart[0];
 } memHeader;
 
-typedef struct _pcb pcb;
 
-// DII
+/* Deivce independent interface struct*/
+typedef struct _pcb pcb;
 typedef struct _devsw {
   int (*dvopen)(pcb*);
   int (*dvclose)(pcb*);
@@ -85,12 +122,7 @@ typedef struct _devsw {
   int (*dvioctl)(pcb*, unsigned long, ...);
 } devsw;
 
-// Driver to DII return codes
-#define DRV_DONE   0
-#define DRV_BLOCK  1
-#define DRV_ERROR -1
-
-// Process Control Block
+/* Process Control Block */
 struct _pcb {
   unsigned int pid; // Process ID
   unsigned int parentPid; // Parent process ID
@@ -101,24 +133,32 @@ struct _pcb {
     /* waiting is special */
     WAITING
   } state;
-  struct _pcb *next; // Next process in ready/send queue
-  struct _pcb *senders ,*receivers; // Head of queue of senders & receivers
+  // Next process in ready/send queue
+  struct _pcb *next;
+  // Head of queue of senders & receivers
+  struct _pcb *senders ,*receivers;
   unsigned int esp;
-  void *stack; // start of process stack returned by malloc
-  int irc; // Interrupt return value holder
-  unsigned int iargs; // Interrupt arguments pointer
-  unsigned int delta; // Time slice left to be waken
-  void (*sig_handler[32])(void*); // signal handlers
+  // start of process stack returned by malloc
+  void *stack;
+  // Interrupt return value holder
+  int irc;
+  // Interrupt arguments pointer
+  unsigned int iargs;
+  // Time slice left to be waken
+  unsigned int delta;
+  // signal handlers
+  void (*sig_handler[32])(void*);
   unsigned int pending_sig;
   unsigned int allowed_sig;
   unsigned int hi_sig;
-  devsw* opened_dv[NUM_FD]; // array of pointers to opened devices
+  // array of pointers to opened devices
+  devsw* opened_dv[NUM_FD];
 };
 
 typedef void (*funcptr)(void);
 typedef void (*handler)(void*);
 
-// Context Frame struct
+/* Context switch and signal trampoline structs */
 typedef struct _contextFrame {
   unsigned int edi;
   unsigned int esi;
@@ -153,6 +193,11 @@ extern void* kmalloc(int);
 extern void kfree(void*);
 
 /* System calls */
+typedef enum {
+  TIME_INT, CREATE, YIELD, STOP, GET_PID, GET_P_PID, PUTS, SEND, RECV,
+  SYS_TIMER, SLEEP, SIGHANDLER, SIGRETURN, KILL, SIGWAIT, OPEN, CLOSE,
+  WRITE, READ, IO_CTL
+} request_type;
 extern int syscreate(void (*func)(void), int stack);
 extern void sysyield(void);
 extern void sysstop(void);
@@ -172,16 +217,11 @@ extern int syswrite(int fd, void *buf, int buflen);
 extern int sysread(int fd, void *buf, int buflen);
 extern int sysioctl(int fd, unsigned long cmd, ...);
 
-/* Messaging */
-#define SYS_SR_NO_PID -1
-#define SYS_SR_SELF -2
-#define SYS_SR_ERR -3
+/* Inter-process communications */
 extern void send(pcb* p, unsigned int dest_pid);
 extern void receive(pcb* p, unsigned int *from_pid);
 
 /* Sleep device */
-#define TIME_SLICE_MS 10
-#define TIME_SLICE_DIV (1000/TIME_SLICE_MS)
 extern void tick(void);
 extern void sleep(pcb*, unsigned int);
 
@@ -199,43 +239,9 @@ typedef struct _treeNode {
   struct _treeNode *left, *right;
   unsigned int height;
 } treeNode;
-
 void pidMapInsert(unsigned int pid, unsigned int pcbIndex);
 int pidMapLookup(unsigned int pid, unsigned int *pcbIndex);
 void pidMapDelete(unsigned int pid);
-
-/* Test functions and macro */
-#if TEST_VERBOSE
-#define test_print(...) kprintf(__VA_ARGS__)
-#define test_puts(...) sysputs(__VA_ARGS__)
-#else
-#define test_print(...)
-#define test_puts(...)
-#endif
-
-#define assertEquals(A, E); \
-  if (E != A) {\
-    kprintf("%s(%u): Assertion failed: actual 0x%x mismatch expected 0x%x\n", __func__, __LINE__, A, E);\
-    for(;;);\
-  }
-#define assert(C); \
-  if (!(C)) {\
-    kprintf("%s(%u): Assertion failed: (%s) not true\n", __func__, __LINE__, xstr(C));\
-    for(;;);\
-  }
-#define where(); \
-  kprintf("%s(%u)\n", __func__, __LINE__);
-
-
-extern void testFreeList(void);
-extern void testKmalloc(void);
-extern void testContextSwitch(void);
-extern void testProcessManagement(void);
-extern void testPidMap(void);
-extern void testSendReceive(void);
-extern void testTimeSharing(void);
-extern void testSleepList(void);
-extern void test_signal(void);
 
 /* Functions defined by startup code */
 void bzero(void *base, int cnt);
