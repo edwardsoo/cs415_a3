@@ -1393,6 +1393,35 @@ void test_syswrite(void) {
   test_puts(str, "Closed fd %d\n", fd);
 }
 
+void test_sysioctl(void) {
+  int rc, fd;
+  unsigned long cmd;
+  char str[TEST_STR_SIZE];
+
+  fd = 0;
+  cmd = 0xdeadbeef;
+  rc = sysioctl(fd, cmd);
+  assertEquals(rc, -1);
+  test_puts(str, "sysioctl fd %d cmd 0x%x returns %d\n", fd, cmd, rc);
+
+  fd = sysopen(KEYBOARD_0);
+  assertEquals(fd, 0);
+  test_puts(str, "Opened device %d, got fd %d\n", KEYBOARD_0, fd);
+  
+  rc = sysioctl(fd, cmd);
+  assertEquals(rc, -1);
+  test_puts(str, "sysioctl fd %d cmd 0x%x returns %d\n", fd, cmd, rc);
+
+  cmd = 53;
+  rc = sysioctl(fd, cmd, '!');
+  assertEquals(rc, 0);
+  test_puts(str, "sysioctl fd %d cmd 0x%x returns %d\n", fd, cmd, rc);
+
+  rc = sysclose(fd);
+  assertEquals(rc, 0);
+  test_puts(str, "Closed fd %d\n", fd);
+}
+
 void test_device() {
   test_print("Tests for sysopen:\n");
   create(test_sysopen, TEST_STACK_SIZE, NULL);
@@ -1404,6 +1433,10 @@ void test_device() {
 
   test_print("Tests for syswrite:\n");
   create(test_syswrite, TEST_STACK_SIZE, NULL);
+  dispatch();
+
+  test_print("Tests for sysioctl:\n");
+  create(test_sysioctl, TEST_STACK_SIZE, NULL);
   dispatch();
 }
 
