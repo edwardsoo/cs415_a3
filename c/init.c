@@ -189,6 +189,7 @@ extern pcb pcbTable[MAX_NUM_PROCESS];
 extern treeNode *pidMap;
 extern void cleanup(pcb*);
 extern unsigned int nextPid;
+extern int test_insert_char(unsigned char c);
 
 void debugMemHeader(memHeader *hdr) {
   dprintf("header@0x%x: size(0x%x), next(0x%x), prev(0x%x), sanityCheck(0x%x)\n",
@@ -1422,6 +1423,39 @@ void test_sysioctl(void) {
   test_puts(str, "Closed fd %d\n", fd);
 }
 
+#define TEST_STRING "abcd"
+#define SHORT_BUF_SIZE 2
+void test_blocking_sysread(void) {
+  int rc, fd;
+  char str[TEST_STR_SIZE], buf[SHORT_BUF_SIZE + 1];
+
+  fd = sysopen(KEYBOARD_0);
+  assertEquals(fd, 0);
+  test_puts(str, "Opened device %d, got fd %d\n", KEYBOARD_0, fd);
+
+  rc = test_insert_char(*TEST_STRING);
+  assertEquals(rc, 0);
+  rc = test_insert_char(*(TEST_STRING+1));
+  assertEquals(rc, 0);
+  rc = test_insert_char(*(TEST_STRING+2));
+  assertEquals(rc, 0);
+  rc = test_insert_char(*(TEST_STRING+3));
+  assertEquals(rc, 0);
+  test_puts(str, "Inserted string \"%s\" into device %d buffer\n",
+    TEST_STRING, KEYBOARD_0);
+
+  rc = sysread(fd, buf, SHORT_BUF_SIZE);
+  assertEquals(rc, SHORT_BUF_SIZE);
+  buf[rc] = 0;
+  assert(strcmp(buf, "ab") == 0);
+  test_puts(str, "sysread fd %d returns %d bytes, read '%s'\n",
+    fd, rc, "ab");
+  
+  rc = sysclose(fd);
+  assertEquals(rc, 0);
+  test_puts(str, "Closed fd %d\n", fd);
+}
+
 void test_device() {
   test_print("Tests for sysopen:\n");
   create(test_sysopen, TEST_STACK_SIZE, NULL);
@@ -1440,6 +1474,8 @@ void test_device() {
   dispatch();
 
   test_print("Tests for nonblocking sysread:\n");
+  create(test_blocking_sysread, TEST_STACK_SIZE, NULL);
+  dispatch();
 }
 
 /* END OF TEST CODE*/

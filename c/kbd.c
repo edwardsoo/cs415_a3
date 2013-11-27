@@ -11,8 +11,8 @@ extern void set_evec(unsigned int xnum, unsigned long handler);
 extern void enable_irq(unsigned int, int);
 extern void	kputc(int, unsigned char);
 static int buf_copy(void);
-static int insert(unsigned char c);
-static int remove(unsigned char *c);
+static int insert_char(unsigned char c);
+static int remove_char(unsigned char *c);
 static unsigned int kbtoa( unsigned char code );
 
 // State variables
@@ -117,6 +117,10 @@ int keyboard_read(pcb* p, void* buf, int buf_len) {
 
   // Buffer has more characters than the request length
   } else if (size >= buf_len) {
+    ps.buf = buf;
+    ps.buf_len = buf_len;
+    ps.ch_read = 0;
+
     if (buf_copy() == DRV_DONE) {
       return DRV_DONE;
     } else {
@@ -143,7 +147,7 @@ int buf_copy() {
   // Copy bytes from character buffer to process buffer
   // Loop until buffer empty or read request met unblock condition
   do {
-    rc = remove(&a);
+    rc = remove_char(&a);
 
     // buffer empty
     if (rc != 0) {
@@ -182,7 +186,7 @@ void keyboard_lower() {
     // Scan code to ASCII
     a = kbtoa(byte);
     if (a && a != NOCHAR) {
-      rc = insert(a);
+      rc = insert_char(a);
       // Echo
       if (ps.echo) {
         kputc(0, a);
@@ -219,7 +223,7 @@ void KeyboardISREntryPoint(void) {
 
 
 // Circular queue insert
-static int insert(unsigned char c) {
+static int insert_char(unsigned char c) {
   if (size < KEYBOARD_BUF_LEN) {
     kb_buf[(head + size) % KEYBOARD_BUF_LEN] = c;
     size++;
@@ -228,7 +232,7 @@ static int insert(unsigned char c) {
   return -1;
 }
 // Circular queue remove
-static int remove(unsigned char *c) {
+static int remove_char(unsigned char *c) {
   if (size > 0) {
     *c = kb_buf[head++];
     head %= KEYBOARD_BUF_LEN;
@@ -352,3 +356,9 @@ unsigned int kbtoa( unsigned char code )
     ch += 0x80;
   return ch;
 }
+
+#if RUNTEST
+int test_insert_char(unsigned char c) {
+  return insert_char(c);
+}
+#endif
