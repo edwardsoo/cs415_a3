@@ -198,6 +198,10 @@ int buf_copy() {
     }
 
     ps.buf[ps.ch_read++] = a;
+    // Echo
+    if (ps.echo) {
+      kputc(0, a);
+    }
     if (a == '\n') {
       goto read_done;
     }
@@ -230,10 +234,6 @@ void keyboard_lower() {
     a = kbtoa(byte);
     if (a && a != NOCHAR) {
       rc = insert_char(a);
-      // Echo
-      if (ps.echo) {
-        kputc(0, a);
-      }
     }
     byte = inb(0x64);
   }
